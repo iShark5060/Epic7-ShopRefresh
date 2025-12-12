@@ -20,10 +20,8 @@ import random
 def get_asset_path(relative_path):
     """Get the correct path for assets, works for both dev and PyInstaller bundle"""
     if getattr(sys, 'frozen', False):
-        # Running as compiled exe
         base_path = sys._MEIPASS
     else:
-        # Running as script
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
@@ -99,15 +97,12 @@ class RefreshStatistic:
             writer.writerow(data)
 
 class SecretShopRefresh:
-    # Reference resolution that the asset images were created for
     REFERENCE_WIDTH = 2663
     REFERENCE_HEIGHT = 1173
 
-    # Timing settings (in seconds)
     MOUSE_SLEEP = 0.15
     SCREENSHOT_SLEEP = 0.15
 
-    # Anti-detection settings
     RANDOM_DELAY_MIN = 0.0
     RANDOM_DELAY_MAX = 0.25
     CLICK_OFFSET_MAX = 10
@@ -115,12 +110,17 @@ class SecretShopRefresh:
     SCROLL_RANDOM_EXTRA_MIN = 0.0
     SCROLL_RANDOM_EXTRA_MAX = 0.15
 
+    SCROLL_RATIO = 0.277
+    ITEM_MATCH_THRESHOLD = 0.8
+    BUTTON_MATCH_THRESHOLD = 0.75
+    SHOP_CHECK_THRESHOLD = 0.7
+    BUY_BUTTON_THRESHOLD = 0.7
+    SOLD_INDICATOR_THRESHOLD = 0.7
+
     def __init__(self, title_name: str, callback = None, tk_instance: tk = None, budget: int = None, allow_move: bool = False, debug: bool = False, join_thread: bool = False, custom_size: tuple = None):
         self.debug = debug
         self.loop_active = False
         self.loop_finish = True
-        self.mouse_sleep = self.MOUSE_SLEEP
-        self.screenshot_sleep = self.SCREENSHOT_SLEEP
 
         if custom_size:
             self.REFERENCE_WIDTH = custom_size[0]
@@ -130,26 +130,16 @@ class SecretShopRefresh:
         self.allow_move = allow_move
         self.join_thread = join_thread
         self.scale_factor = 1.0
-
-        self.loading_asset_original = cv2.imread(get_asset_path(os.path.join('assets', 'loading.jpg')))
-        self.loading_asset_original = cv2.cvtColor(self.loading_asset_original, cv2.COLOR_BGR2GRAY)
-        self.loading_asset = self.loading_asset_original
-
         self.refresh_btn_original = self._loadGrayAsset('refresh.png')
         self.refresh_btn = self.refresh_btn_original
-
         self.confirm_btn_original = self._loadGrayAsset('confirm.png')
         self.confirm_btn = self.confirm_btn_original
-
         self.confirm_buy_btn_original = self._loadGrayAsset('confirm_buy.png')
         self.confirm_buy_btn = self.confirm_buy_btn_original
-
         self.buy_btn_original = self._loadGrayAsset('buy.png')
         self.buy_btn = self.buy_btn_original
-
         self.sold_indicator_original = self._loadGrayAsset('sold.png')
         self.sold_indicator = self.sold_indicator_original
-
         self.title_name = title_name
         windows = gw.getWindowsWithTitle(self.title_name)
         self.window = next((w for w in windows if w.title == self.title_name), None)
@@ -179,7 +169,7 @@ class SecretShopRefresh:
             click_type = "double-click" if is_double else "single-click"
             print(f'[DEBUG] Click type: {click_type}')
         if is_double:
-            pyautogui.click(clicks=2, interval=self.mouse_sleep)
+            pyautogui.click(clicks=2, interval=self.MOUSE_SLEEP)
         else:
             pyautogui.click()
 
@@ -192,7 +182,7 @@ class SecretShopRefresh:
             process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
 
             if self.refresh_btn is not None:
-                pos = self.findButtonPosition(process_screenshot, self.refresh_btn, threshold=0.7)
+                pos = self.findButtonPosition(process_screenshot, self.refresh_btn, threshold=self.SHOP_CHECK_THRESHOLD)
                 return pos is not None
             return False
         except Exception as e:
@@ -244,9 +234,6 @@ class SecretShopRefresh:
         if abs(self.scale_factor - 1.0) < 0.01:
             return
 
-        if self.loading_asset_original is not None:
-            self.loading_asset = self.scaleImage(self.loading_asset_original)
-
         if self.refresh_btn_original is not None:
             self.refresh_btn = self.scaleImage(self.refresh_btn_original)
         if self.confirm_btn_original is not None:
@@ -277,7 +264,7 @@ class SecretShopRefresh:
             return
 
         self.loop_active = True
-        self.loop_finish = False 
+        self.loop_finish = False
         keyboard_thread = threading.Thread(target=self.checkKeyPress)
         refresh_thread = threading.Thread(target=self.shopRefreshLoop)
         keyboard_thread.daemon = True
@@ -337,7 +324,7 @@ class SecretShopRefresh:
             else:
                 refresh_label.config(text=f'Refreshes: {current}')
 
-        time.sleep(self.mouse_sleep)
+        time.sleep(self.MOUSE_SLEEP)
 
         if not self.loop_active:
             if hint: hint.destroy()
@@ -351,7 +338,7 @@ class SecretShopRefresh:
                 print(e)
 
             self.rs_instance.updateTime()
-            sliding_time = max(0.7+self.screenshot_sleep, 1)
+            sliding_time = max(0.7+self.SCREENSHOT_SLEEP, 1)
             loop_count = 0
             while self.loop_active:
                 loop_start_time = time.time()
@@ -365,67 +352,25 @@ class SecretShopRefresh:
                         break
                     continue
 
-                brought = set()
+                bought = set()
                 if not self.loop_active: break
 
                 time.sleep(sliding_time)
                 screenshot = self.takeScreenshot()
                 process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
 
-                found_any = True
-                while found_any and self.loop_active:
-                    found_any = False
-                    for key, shop_item in self.rs_instance.getInventory().items():
-                        if key in brought:
-                            continue
-                        pos = self.findItemPosition(process_screenshot, shop_item.scaled_image, item_name=key)
-                        if pos is not None:
-                            if self.debug:
-                                print(f'[DEBUG] Found "{key}" - clicking buy button')
-                            self.clickBuy(pos)
-                            shop_item.count += 1
-                            brought.add(key)
-                            found_any = True
-                            time.sleep(0.3)
-                            screenshot = self.takeScreenshot()
-                            if screenshot is None:
-                                found_any = False
-                                break
-                            process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-                            break
-
+                process_screenshot = self._buyAvailableItems(process_screenshot, bought)
                 if hint: updateMiniDisplay()
                 if not self.loop_active: break
 
                 self.scrollShop()
-                time.sleep(max(0.3, self.screenshot_sleep))
+                time.sleep(max(0.3, self.SCREENSHOT_SLEEP))
                 if not self.loop_active: break
 
                 screenshot = self.takeScreenshot()
                 process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
 
-                found_any = True
-                while found_any and self.loop_active:
-                    found_any = False
-                    for key, shop_item in self.rs_instance.getInventory().items():
-                        if key in brought:
-                            continue
-                        pos = self.findItemPosition(process_screenshot, shop_item.scaled_image, item_name=key)
-                        if pos is not None:
-                            if self.debug:
-                                print(f'[DEBUG] Found "{key}" (after scroll) - clicking buy button')
-                            self.clickBuy(pos)
-                            shop_item.count += 1
-                            brought.add(key)
-                            found_any = True
-                            time.sleep(0.3)
-                            screenshot = self.takeScreenshot()
-                            if screenshot is None:
-                                found_any = False
-                                break
-                            process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-                            break
-
+                self._buyAvailableItems(process_screenshot, bought, ' (after scroll)')
                 if hint: updateMiniDisplay()
                 if not self.loop_active: break
 
@@ -441,7 +386,7 @@ class SecretShopRefresh:
                     loop_duration = time.time() - loop_start_time
                     print(f'[DEBUG] ══════ Loop #{loop_count} completed in {loop_duration:.2f}s ══════')
 
-                time.sleep(self.mouse_sleep)
+                time.sleep(self.MOUSE_SLEEP)
                 if self.window.title != self.title_name: break
 
         except Exception as e:
@@ -486,9 +431,9 @@ class SecretShopRefresh:
 
         tk.Frame(master=hint, bg=bg_color, height=10).pack()
         refresh_label = tk.Label(
-            master=hint, 
-            text='Refreshes: 0', 
-            bg=bg_color, 
+            master=hint,
+            text='Refreshes: 0',
+            bg=bg_color,
             fg='#88FF88',
             font=('Helvetica', 11, 'bold')
         )
@@ -515,25 +460,38 @@ class SecretShopRefresh:
             print(e)
             return None
 
-    def checkLoading(self, process_screenshot):
-        result = cv2.matchTemplate(process_screenshot, self.loading_asset, cv2.TM_CCOEFF_NORMED)
-        loc = np.where(result >= 0.75)
-        if loc[0].size <= 0:
-            return process_screenshot, False
+    def _buyAvailableItems(self, process_screenshot, bought, debug_suffix=''):
+        """Find and buy all available items in the current screenshot.
 
-        for _ in range(14):
-            time.sleep(1)
-            screenshot = self.takeScreenshot()
-            process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-            result = cv2.matchTemplate(process_screenshot, self.loading_asset, cv2.TM_CCOEFF_NORMED)
-            loc = np.where(result >= 0.75)
-            if loc[0].size <= 0:
-                time.sleep(1.5)
-                screenshot = self.takeScreenshot()
-                process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-                return process_screenshot, True
+        Args:
+            process_screenshot: Grayscale screenshot to search in
+            bought: Set of already-bought item keys (modified in place)
+            debug_suffix: Optional suffix for debug messages (e.g., ' (after scroll)')
 
-        return None, False
+        Returns:
+            Updated process_screenshot after any purchases
+        """
+        found_any = True
+        while found_any and self.loop_active:
+            found_any = False
+            for key, shop_item in self.rs_instance.getInventory().items():
+                if key in bought:
+                    continue
+                pos = self.findItemPosition(process_screenshot, shop_item.scaled_image, item_name=key)
+                if pos is not None:
+                    if self.debug:
+                        print(f'[DEBUG] Found "{key}"{debug_suffix} - clicking buy button')
+                    self.clickBuy(pos)
+                    shop_item.count += 1
+                    bought.add(key)
+                    found_any = True
+                    time.sleep(0.3)
+                    screenshot = self.takeScreenshot()
+                    if screenshot is None:
+                        return process_screenshot
+                    process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+                    break
+        return process_screenshot
 
     def findItemPosition(self, process_screenshot, process_item, item_name='unknown'):
         process_screenshot = cv2.GaussianBlur(process_screenshot, (3, 3), 0)
@@ -541,7 +499,7 @@ class SecretShopRefresh:
 
         result = cv2.matchTemplate(process_screenshot, process_item, cv2.TM_CCOEFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        loc = np.where(result >= 0.8)
+        loc = np.where(result >= self.ITEM_MATCH_THRESHOLD)
 
         if self.debug:
             status = "FOUND" if loc[0].size > 0 else "not found"
@@ -566,7 +524,7 @@ class SecretShopRefresh:
                     buy_result = cv2.matchTemplate(roi_blurred, buy_btn_blurred, cv2.TM_CCOEFF_NORMED)
                     _, max_val, _, max_loc = cv2.minMaxLoc(buy_result)
 
-                    if max_val >= 0.7:
+                    if max_val >= self.BUY_BUTTON_THRESHOLD:
                         btn_h, btn_w = self.buy_btn.shape[:2]
                         x = self.window.left + roi_x_start + max_loc[0] + btn_w // 2
                         y = self.window.top + roi_y_start + max_loc[1] + btn_h // 2
@@ -576,7 +534,7 @@ class SecretShopRefresh:
                     sold_blurred = cv2.GaussianBlur(self.sold_indicator, (3, 3), 0)
                     sold_result = cv2.matchTemplate(roi_blurred, sold_blurred, cv2.TM_CCOEFF_NORMED)
                     _, sold_max_val, _, _ = cv2.minMaxLoc(sold_result)
-                    if sold_max_val >= 0.7:
+                    if sold_max_val >= self.SOLD_INDICATOR_THRESHOLD:
                         return None
 
             return None
@@ -634,9 +592,9 @@ class SecretShopRefresh:
 
     def clickBuy(self, pos):
         """Click the buy button at the given position.
-        
+
         Note: We use position-based clicking here because all buy buttons look identical.
-        The position is calculated by findItemPosition() to be at the buy button 
+        The position is calculated by findItemPosition() to be at the buy button
         (right side of the row where the item was found).
         """
         if pos is None:
@@ -649,7 +607,7 @@ class SecretShopRefresh:
         y += offset_y
         pyautogui.moveTo(x, y)
         self.randomClick()
-        time.sleep(self.mouse_sleep)
+        time.sleep(self.MOUSE_SLEEP)
         self.clickConfirmBuy()
         return True
 
@@ -658,13 +616,13 @@ class SecretShopRefresh:
             print('[DEBUG] Clicking confirm buy button')
         self.randomDelay()
         self.clickButtonByImage(
-            self.confirm_buy_btn, 
-            fallback_x_ratio=0.55, 
+            self.confirm_buy_btn,
+            fallback_x_ratio=0.55,
             fallback_y_ratio=0.70,
-            threshold=0.75
+            threshold=self.BUTTON_MATCH_THRESHOLD
         )
-        time.sleep(self.mouse_sleep)
-        time.sleep(self.screenshot_sleep)
+        time.sleep(self.MOUSE_SLEEP)
+        time.sleep(self.SCREENSHOT_SLEEP)
 
     def clickRefresh(self):
         if self.debug:
@@ -674,9 +632,9 @@ class SecretShopRefresh:
             self.refresh_btn,
             fallback_x_ratio=0.20,
             fallback_y_ratio=0.90,
-            threshold=0.75
+            threshold=self.BUTTON_MATCH_THRESHOLD
         )
-        time.sleep(self.mouse_sleep)
+        time.sleep(self.MOUSE_SLEEP)
         self.clickConfirmRefresh()
 
     def clickConfirmRefresh(self):
@@ -687,15 +645,15 @@ class SecretShopRefresh:
             self.confirm_btn,
             fallback_x_ratio=0.58,
             fallback_y_ratio=0.65,
-            threshold=0.75
+            threshold=self.BUTTON_MATCH_THRESHOLD
         )
-        time.sleep(self.screenshot_sleep)
+        time.sleep(self.SCREENSHOT_SLEEP)
 
     def scrollShop(self):
         x = self.window.left + self.window.width * 0.58
         y = self.window.top + self.window.height * 0.65
 
-        base_scroll = 0.277
+        base_scroll = self.SCROLL_RATIO
         extra_scroll = random.uniform(self.SCROLL_RANDOM_EXTRA_MIN, self.SCROLL_RANDOM_EXTRA_MAX)
         total_scroll = base_scroll + (base_scroll * extra_scroll)
 
@@ -710,16 +668,6 @@ class SecretShopRefresh:
         pyautogui.moveTo(x, y - self.window.height * total_scroll)
         pyautogui.mouseUp(button='left')
         self.randomDelay()
-
-    def scrollUp(self):
-        x = self.window.left + self.window.width * 0.58
-        y = self.window.top + self.window.height * 0.65
-        pyautogui.moveTo(x, y-self.window.height*0.277)
-        time.sleep(0.1)
-        pyautogui.mouseDown(button='left')
-        time.sleep(0.1)
-        pyautogui.moveTo(x, y)
-        pyautogui.mouseUp(button='left')
 
 class AppConfig():
     def __init__(self):
@@ -739,7 +687,7 @@ class AutoRefreshGUI:
     def __init__(self, debug_mode=False, custom_size=None):
         self.app_config = AppConfig()
         self.app_config.DEBUG = debug_mode
-        self.custom_size = custom_size  # (width, height) or None
+        self.custom_size = custom_size
         self.root = tk.Tk()
         self.unite_bg_color = '#171717'
         self.unite_text_color = '#dddddd'
@@ -827,7 +775,7 @@ class AutoRefreshGUI:
             label.pack(side=tk.LEFT)
             if default or default == 0:
                 entry.insert(0, default)
-            
+
             entry.pack(side=tk.RIGHT)
             frame.pack()
             return entry
@@ -896,7 +844,7 @@ class AutoRefreshGUI:
 
     def packItemHorizontal(self, parent_frame, index, path):
         """Pack item with icon on top and large toggle button below, arranged horizontally"""
-        
+
         is_mandatory = path in self.app_config.MANDATORY_PATH
         is_checked = is_mandatory or path not in self.ignore_path
         item_frame = tk.Frame(parent_frame, bg=self.unite_bg_color, padx=15)
@@ -955,8 +903,8 @@ class AutoRefreshGUI:
         self.lock_start_button = True
         self.start_button.config(state=tk.DISABLED)
         self.ssr = SecretShopRefresh(
-            title_name=self.title_name, 
-            callback=self.refreshComplete, 
+            title_name=self.title_name,
+            callback=self.refreshComplete,
             debug=self.app_config.DEBUG,
             custom_size=self.custom_size
         )
@@ -1011,12 +959,12 @@ if __name__ == '__main__':
         for title in gw.getAllTitles():
             if title.strip():
                 print(f'  - {title}')
-        
+
         print(f'\nDefault reference size (for included assets): {SecretShopRefresh.REFERENCE_WIDTH}x{SecretShopRefresh.REFERENCE_HEIGHT}')
-        
+
         if custom_width and custom_height:
             print(f'Custom reference size (your assets): {custom_width}x{custom_height}')
-        
+
         print('\nTo check scaling for a specific window, run the app normally.')
         print('The scale factor will be printed when you start refreshing.')
         exit(0)
