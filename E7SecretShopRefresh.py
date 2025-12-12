@@ -378,7 +378,12 @@ class SecretShopRefresh:
                     if self.rs_instance.refresh_count >= self.budget // 3:
                         break
 
-                self.clickRefresh()
+                refresh_success = self.clickRefresh()
+                if not refresh_success:
+                    if hint:
+                        refresh_label.config(text='Out of skystones!', fg='#FF6666')
+                    break
+
                 self.rs_instance.incrementRefreshCount()
                 if hint: updateRefreshCounter()
 
@@ -625,6 +630,11 @@ class SecretShopRefresh:
         time.sleep(self.SCREENSHOT_SLEEP)
 
     def clickRefresh(self):
+        """Click refresh and handle the confirmation flow.
+
+        Returns:
+            True if refresh succeeded, False if user is out of gold
+        """
         if self.debug:
             print('[DEBUG] Clicking refresh button')
         self.randomDelay()
@@ -635,9 +645,14 @@ class SecretShopRefresh:
             threshold=self.BUTTON_MATCH_THRESHOLD
         )
         time.sleep(self.MOUSE_SLEEP)
-        self.clickConfirmRefresh()
+        return self.clickConfirmRefresh()
 
     def clickConfirmRefresh(self):
+        """Click confirm button and check for out-of-gold scenario.
+
+        Returns:
+            True if refresh succeeded, False if user is out of gold
+        """
         if self.debug:
             print('[DEBUG] Clicking confirm refresh button')
         self.randomDelay()
@@ -648,6 +663,51 @@ class SecretShopRefresh:
             threshold=self.BUTTON_MATCH_THRESHOLD
         )
         time.sleep(self.SCREENSHOT_SLEEP)
+
+        if not self._checkOutOfSkystones():
+            return False
+
+        return True
+
+    def _checkOutOfSkystones(self):
+        """Check if another confirm button appeared (out of skystones).
+
+        Returns:
+            True if we're good to continue, False if user is out of skystones
+        """
+        screenshot = self.takeScreenshot()
+        if screenshot is None:
+            return True
+
+        process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+
+        confirm_pos = self.findButtonPosition(process_screenshot, self.confirm_btn, self.BUTTON_MATCH_THRESHOLD)
+
+        if confirm_pos is not None:
+            if self.debug:
+                print('[DEBUG] Detected another confirm button - possible out of skystones popup')
+
+            x, y = confirm_pos
+            offset_x, offset_y = self.randomClickOffset()
+            pyautogui.moveTo(x + offset_x, y + offset_y)
+            self.randomClick()
+            time.sleep(0.5)
+
+            screenshot = self.takeScreenshot()
+            if screenshot is None:
+                return True
+
+            process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+            refresh_pos = self.findButtonPosition(process_screenshot, self.refresh_btn, self.BUTTON_MATCH_THRESHOLD)
+
+            if refresh_pos is None:
+                print('[INFO] Out of skystones! User has been redirected to shop. Stopping script.')
+                return False
+            else:
+                if self.debug:
+                    print('[DEBUG] Refresh button still visible - was just a missed click')
+
+        return True
 
     def scrollShop(self):
         x = self.window.left + self.window.width * 0.58
