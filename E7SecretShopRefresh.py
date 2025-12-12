@@ -3,6 +3,7 @@ from tkinter import ttk
 from PIL import ImageTk, Image
 import csv
 import os
+import sys
 import time
 import threading
 from datetime import datetime
@@ -15,6 +16,16 @@ import numpy as np
 import keyboard
 from PIL import ImageGrab
 import random
+
+def get_asset_path(relative_path):
+    """Get the correct path for assets, works for both dev and PyInstaller bundle"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled exe
+        base_path = sys._MEIPASS
+    else:
+        # Running as script
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
 
 class ShopItem:
     def __init__(self, path='', image=None, price=0, count=0):
@@ -37,7 +48,7 @@ class RefreshStatistic:
         self.start_time = datetime.now()
 
     def addShopItem(self, path: str, name='', price=0, count=0):
-        image = cv2.imread(os.path.join('assets', path))
+        image = cv2.imread(get_asset_path(os.path.join('assets', path)))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         newItem = ShopItem(path, image, price, count)
         self.items[name] = newItem
@@ -120,7 +131,7 @@ class SecretShopRefresh:
         self.join_thread = join_thread
         self.scale_factor = 1.0
 
-        self.loading_asset_original = cv2.imread(os.path.join('assets', 'loading.jpg'))
+        self.loading_asset_original = cv2.imread(get_asset_path(os.path.join('assets', 'loading.jpg')))
         self.loading_asset_original = cv2.cvtColor(self.loading_asset_original, cv2.COLOR_BGR2GRAY)
         self.loading_asset = self.loading_asset_original
 
@@ -211,7 +222,7 @@ class SecretShopRefresh:
 
     def _loadGrayAsset(self, filename):
         """Load an asset image and convert to grayscale"""
-        path = os.path.join('assets', filename)
+        path = get_asset_path(os.path.join('assets', filename))
         if not os.path.exists(path):
             print(f'Warning: Asset {filename} not found')
             return None
@@ -305,7 +316,7 @@ class SecretShopRefresh:
         if self.tk_instance:
             selected_path = self.rs_instance.getPath()
             for path in selected_path:
-                img = Image.open(os.path.join('assets', path))
+                img = Image.open(get_asset_path(os.path.join('assets', path)))
                 img = img.resize((45,45))
                 img = ImageTk.PhotoImage(img)
                 mini_images.append(img)
@@ -457,7 +468,7 @@ class SecretShopRefresh:
         hint = tk.Toplevel(self.tk_instance)
         hint.geometry(r'220x250+%d+%d' % (self.window.left, self.window.top+self.window.height))
         hint.title('Shopping')
-        hint.iconbitmap(os.path.join('assets','icon.ico'))
+        hint.iconbitmap(get_asset_path(os.path.join('assets', 'icon.ico')))
         tk.Label(master=hint, text='Press ESC to stop!', bg=bg_color, fg=fg_color, font=('Helvetica', 10)).pack(pady=(5,10))
         hint.config(bg=bg_color)
 
@@ -737,7 +748,7 @@ class AutoRefreshGUI:
         self.root.geometry('420x550')
         self.root.minsize(420, 500)
 
-        icon_path = os.path.join('assets', 'gui_icon.ico')
+        icon_path = get_asset_path(os.path.join('assets', 'gui_icon.ico'))
         self.root.iconbitmap(icon_path)
         self.title_name = ''
         self.ignore_path = {'friendship.png'}
@@ -853,7 +864,7 @@ class AutoRefreshGUI:
         self.item_checkboxes = []
 
         for index, item in enumerate(self.app_config.ALL_ITEMS):
-            img = Image.open(os.path.join('assets', item[0]))
+            img = Image.open(get_asset_path(os.path.join('assets', item[0])))
             img = img.resize(GUI_ITEM_SIZE, Image.Resampling.LANCZOS)
             self.keep_image_open.append(ImageTk.PhotoImage(img))
             self.packItemHorizontal(items_frame, index, item[0])

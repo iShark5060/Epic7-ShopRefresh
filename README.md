@@ -1,179 +1,147 @@
-# Epic Seven Secret Shop Refresh with GUI
-## Showcase
-![](https://github.com/sya1999/Epic-Seven-Secret-Shop-Refresh/blob/main/assets/E7.gif)
-## Getting Started
-### MOUSE vs ADB
-There are two different ways to run auto shop refresh, either through **controlling host mouse** or **send in debug command** to emulator
+# Epic7 Shopper - Secret Shop Auto Refresh
 
-<br>
+An automated tool for refreshing the Secret Shop in Epic Seven, with support for any window resolution and built-in anti-detection features.
 
-### Special Note (MUST READ!!!)
-1. If you are using the program with the **new PC Client**, then you need to **run the shop refresh program with administrator privileges**
+![Demo](https://github.com/sya1999/Epic-Seven-Secret-Shop-Refresh/blob/main/assets/E7.gif)
 
-(This is not necessary when you are using an emulator.)
+## Credits
 
-<br>
+**Original Project by [sya1999](https://github.com/sya1999/Epic-Seven-Secret-Shop-Refresh)**
 
-2. If the **button is grey-out**, that means you typed or selected the wrong window title, the name has to be exact down to the spacing
+This project is a fork of the original Epic Seven Secret Shop Refresh tool. Huge thanks to the original developer for creating the foundation that made this enhanced version possible!
 
-<br>
+---
 
-3. Make sure the monitor is **TURNED ON AT ALL TIMES**, the program relies on the display to be active to take screenshot
+## Features
 
-(By default, the mouse movement should keep the screen on, just don't power off the display maunally)
+- **Multi-Resolution Support** - Works with any window size (auto-scales detection images)
+- **Image-Based Detection** - Uses template matching instead of fixed coordinates
+- **Anti-Detection Measures** - Random delays, click offsets, and scroll variations
+- **Multiple Item Support** - Detects and purchases all desired items in a single view
+- **Safety Checks** - Pauses if you navigate away from the shop
+- **Live Shopping Display** - Shows items purchased and refresh counter
+- **Debug Mode** - Detailed output for troubleshooting
 
-<br>
+## Quick Start
 
-4. Make sure that the **program recognize the covenant/mystic bookmark before letting it run unsupervised**
+### Prerequisites
 
-(you can manual refresh faster, so refresh till a bookmark show up, then start the program to see if it purchased)
+- Python 3.9+ (tested with 3.11)
+- Epic Seven running in windowed mode
+- Navigate to the Secret Shop before starting
 
-<br>
+### Installation
 
-5. Use the **friendship bookmark option** to find out what mouse speed suit your pc. Feel free to increase mouse speed if it's running too fast.
+1. Clone or download this repository
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-(If you have a good PC, You can set the **mouse speed to 0 and Screenshot speed to 0.3**) 
+### Running
 
-### Refresh Options
-**Mouse**
+1. Open Epic Seven and navigate to the **Secret Shop**
+2. Run the application:
+   ```bash
+   python E7SecretShopRefresh.py
+   ```
+3. Select your game window from the dropdown
+4. Check the items you want to purchase (Covenant, Mystic, Friendship bookmarks)
+5. (Optional) Set a Skystone budget
+6. Click **Start Refresh**
+7. Press **ESC** to stop at any time
 
-Pros:
+## Command Line Options
 
-- Compatible with all emulator
+```bash
+# Normal mode
+python E7SecretShopRefresh.py
 
-- Fastest way to refresh shop 
+# Debug mode (detailed output)
+python E7SecretShopRefresh.py --debug
 
-Cons:
+# Show window info and scaling details
+python E7SecretShopRefresh.py --info
 
-- Can't use mouse while the application is running
+# Use custom reference size (for your own screenshots)
+python E7SecretShopRefresh.py --size=1920x1080
 
-- Emulator needs to stay on screen
-
-- Google Play Beta user might need to change desktop display setting to 1920 x 1080
-
-[Click Here to jump to Mouse section](https://github.com/Solunium/Epic-Seven-E7-Secret-Shop-Refresh/tree/main?tab=readme-ov-file#quick-start-mouse)
-
-<br>
-
-**ADB**
-
-Pros:
-
-- Mouse is free to do whatever
-
-- you can minimize the emulator window 
-
-Cons:
-
-- Requires emulator to have ADB 
-
-- need to set ingame resolution to be 1920 x 1080
-
-[Click Here to jump to ADB section](https://github.com/Solunium/Epic-Seven-E7-Secret-Shop-Refresh/tree/main?tab=readme-ov-file#quick-start-android-debug-bridge)
-
-<br>
-
-### Quick Start (Mouse):
-
-<br>
-
-**Step 1.** Download the [latest release](https://github.com/sya1999/Epic-Seven-Secret-Shop-Refresh/releases) make sure to download (**E7 Secret Shop Refresh.zip**)
-
-**Step 2.** Extract the zip file to any directory
-
-**Step 3.** Launch Epic Seven on your emulator, make sure to close dispatch mission and news
-
-**Step 4.** Launch **E7SecretShopRefresh** in the folder that you just extracted
-
-**Step 5.** Select your emulator from the drop down box	
-  - If you can't find it, you need to type in the window name of your emulator and press enter
-  - you can see the name of you emulator by hovering over the taskbar icon of your emulator
-
-**Step 6.** (Optional) you can change the setting, refer to [Setting section](https://github.com/sya1999/Epic-Seven-Secret-Shop-Refresh/tree/main?tab=readme-ov-file#settings)
-
-**Step 6.5:** **EXTRA STEP FOR GOOGLE PLAY BETA USER**
-
-If you are using **GOOGLE PLAY BETA**, make sure **Desktop display resolution setting is 1920 x 1080**, so that it resize properly  
-
-**Step 7.** Press the "start refresh" button
-
-**PRESS ESC KEY TO STOP THE PROGRAM**
-
-**Always make sure that the program recognize the covenant/mystic bookmark before letting it run unsupervised**
-
-**If you encounter a problem, feel free to open a issue on github!**
-	
-You can check your refreshing history in the folder called **ShopRefreshHistory**
-
-<br>
-
-### Quick Start (Android Debug Bridge):
-
-<br>
-
-**Step 1.** Download the [latest release](https://github.com/sya1999/Epic-Seven-Secret-Shop-Refresh/releases) make sure to download (**E7 Secret Shop Refresh.zip**)
-
-**Step 2.** Extract the zip file to any directory
-
-**Step 3.** Launch Epic Seven on your emulator, make sure to close dispatch mission and news
-
-**step 4.** Turn on **ADB** (Android Debug bridge) on your emulator
-
-Google play beta user needs to download **Google Play Games on PC Developer Emulator**, then allow debug when prompted in home screen. 
-Unfortunately, **Epic Seven needs to be redownloaded**. Go with the mouse option, if you don't want to go through the trouble
-
-**step 5.** Change emulator's resolution to **1920 x 1080**
-
-**step 6.** Launch **E7ADBShopRefresh** in the folder that you just extracted
-
-**step 7.** Follow the instruction show in the command line, and press enter to start
-
-**PRESS ESC KEY TO STOP THE PROGRAM**
-
-**Always make sure that the program recognize the covenant/mystic bookmark before letting it run unsupervised**
-
-**One way to test the program is to manual refresh till covenant/mystic bookmark show up, then run the program to see if it brought**
-
-You can check your refreshing history in the folder called **ShopRefreshHistory**
-
-<br>
-
-### Compile it yourself:
-**Step 1.** Install python version 3.11.9
-
-**Step 2.** Git clone this repository to your directory
-
-If you don't want to deal with git, then download the code as zip file using the green "code" button on top
-
-**Step 3.** (Optional) Setup and activate a virtual environment with venv or conda
-
-**Step 4.** Install the dependencies
-```
-pip install -r requirements.txt
-```
-**Step 5.** Open and run E7SecretShopRefresh.py or main.ipynb, go to the main function or app config class to make edit
-
-**Step 6.** (Optional) Use pyinstaller to create an executable
-```
-python -m PyInstaller -F --noconsole -i assets/icon.ico E7SecretShopRefresh.py
-```
-```
-python -m PyInstaller -F -i adb-assets/icon.ico E7ADBShopRefresh.py
+# Combine options
+python E7SecretShopRefresh.py --debug --size=1920x1080
 ```
 
-<br>
+## Building an Executable
+
+### Using the spec file (recommended):
+```bash
+pip install pyinstaller
+pyinstaller E7SecretShopRefresh.spec
+```
+
+### Or with a simple command:
+```bash
+pyinstaller -F --noconsole -i assets/icon.ico E7SecretShopRefresh.py
+```
+
+The executable will be created in the `dist` folder.
+
+**Note:** When distributing, you need to include the `assets` folder alongside the executable, or use the spec file which bundles assets automatically.
 
 ## Settings
-It can be helpful to select the friendship bookmark to check if the program is detecting items correctly	
 
-Increase mouse speed, if the mouse is moving faster than ui animation
+| Setting | Description |
+|---------|-------------|
+| **Window Title** | Select your game window from the dropdown or type the exact window name |
+| **Covenant/Mystic/Friendship** | Toggle which bookmark types to purchase |
+| **Skystone Budget** | Maximum skystones to spend (leave empty for unlimited) |
+| **Auto Placement** | Automatically position the game window |
 
-Increase screenshot speed, if you have a longer loading time after each purchase/refresh action
+## Important Notes
 
-You can stay with the default speed setting in most cases
+1. **Administrator Mode**: If using the PC client (not an emulator), run the program as Administrator
 
-By not setting a skystone budget, the program will run till ESC is pressed
+2. **Monitor Must Stay On**: The program takes screenshots to detect items - don't turn off your display
 
-You can toggle on and off hint which is a live counter of the items purchased
+3. **Test First**: Manually refresh until a bookmark appears, then start the program to verify detection works
 
-by turning off auto placement, you can move the emulator to another monitor (After turning this off, make sure the entire emulator window stays on-screen)
+4. **Stay in Shop**: The program assumes you're already in the Secret Shop - it won't navigate there automatically
+
+## Troubleshooting
+
+### Items not being detected?
+
+1. Run with `--debug` flag to see confidence scores
+2. If confidence is low (<0.8), the images may need updating for your resolution
+3. Use `--info` to check your window size
+4. Try providing custom screenshots with `--size=WIDTHxHEIGHT`
+
+### Button clicks missing?
+
+The anti-detection system adds random offsets to clicks. If buttons are consistently missed, check if your window has unusual borders or scaling.
+
+### Program clicking in wrong places?
+
+Make sure you're in the Secret Shop before starting. The safety system will pause if it can't find the refresh button.
+
+## Custom Screenshots
+
+If the included images don't work for your setup:
+
+1. Take screenshots of the items/buttons at your resolution
+2. Save them in the `assets` folder with the same names:
+   - `covenant.png`, `mystic.png`, `friendship.png` (items)
+   - `buy.png`, `refresh.png`, `confirm.png`, `confirm_buy.png` (buttons)
+   - `sold.png` (sold indicator)
+3. Run with `--size=WIDTHxHEIGHT` matching your screenshot resolution
+
+## History
+
+Purchase history is saved to the `ShopRefreshHistory` folder as CSV files.
+
+## License
+
+See [LICENSE](LICENSE) file.
+
+---
+
+*Happy refreshing! May your bookmarks be plentiful!* 🎰✨
