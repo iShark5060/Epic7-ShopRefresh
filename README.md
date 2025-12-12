@@ -19,8 +19,13 @@ This project is a fork of the original Epic Seven Secret Shop Refresh tool. Huge
 - **Anti-Detection Measures** - Random delays, click offsets, and scroll variations
 - **Multiple Item Support** - Detects and purchases all desired items in a single view
 - **Safety Checks** - Pauses if you navigate away from the shop
+- **Out of Skystone Check** - Stops script if the user is out of skystones
 - **Live Shopping Display** - Shows items purchased and refresh counter
 - **Debug Mode** - Detailed output for troubleshooting
+
+## ToDo
+
+- **Out of Gold check** - I .. have too much Gold to check that currently, sorry =D
 
 ## Quick Start
 
