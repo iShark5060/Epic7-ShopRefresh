@@ -789,8 +789,8 @@ class AutoRefreshGUI:
         self.unite_text_color = '#dddddd'
         self.root.config(bg=self.unite_bg_color)
         self.root.title('Epic7 Shopper')
-        self.root.geometry('420x550')
-        self.root.minsize(420, 500)
+        self.root.geometry('420x590')
+        self.root.minsize(420, 540)
 
         icon_path = get_asset_path(os.path.join('assets', 'gui_icon.ico'))
         self.root.iconbitmap(icon_path)
@@ -835,6 +835,7 @@ class AutoRefreshGUI:
 
         special_frame = tk.Frame(self.root, bg=self.unite_bg_color)
         self.move_zerozero_cbv = tk.BooleanVar(value=True)
+        self.debug_cbv = tk.BooleanVar(value=self.app_config.DEBUG)
 
         def setupSpecialSetting(label, value):
             frame = tk.Frame(special_frame, bg=self.unite_bg_color)
@@ -847,12 +848,15 @@ class AutoRefreshGUI:
                                 font=('Helvetica',14),
                                 variable=value,
                                 bg=self.unite_bg_color)
-            special_cb.select()
+            # Checkbutton automatically reflects BooleanVar value, but ensure it's synced
+            if value.get():
+                special_cb.select()
             special_label.pack(side=tk.LEFT)
             special_cb.pack(side=tk.RIGHT)
             frame.pack()
 
         setupSpecialSetting('Auto move emulator window to top left:', self.move_zerozero_cbv)
+        setupSpecialSetting('Enable debug mode (writes to debug.log):', self.debug_cbv)
 
         setting_frame = tk.Frame(self.root)
         setting_frame.config(bg=self.unite_bg_color)
@@ -998,6 +1002,8 @@ class AutoRefreshGUI:
         self.root.title('Press ESC to stop!')
         self.lock_start_button = True
         self.start_button.config(state=tk.DISABLED)
+        # Update debug mode from checkbox
+        self.app_config.DEBUG = self.debug_cbv.get()
         self.ssr = SecretShopRefresh(
             title_name=self.title_name,
             callback=self.refreshComplete,
