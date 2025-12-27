@@ -119,6 +119,12 @@ class SecretShopRefresh:
 
     def __init__(self, title_name: str, callback = None, tk_instance: tk = None, budget: int = None, allow_move: bool = False, debug: bool = False, join_thread: bool = False, custom_size: tuple = None):
         self.debug = debug
+        self.debug_log_file = None
+        if self.debug:
+            # Open debug log file in append mode
+            log_path = os.path.join(os.getcwd(), 'debug.log')
+            self.debug_log_file = open(log_path, 'a', encoding='utf-8')
+            self.debug_log(f'\n{"="*60}\nDebug session started at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n{"="*60}')
         self.loop_active = False
         self.loop_finish = True
 
@@ -147,11 +153,25 @@ class SecretShopRefresh:
         self.tk_instance = tk_instance
         self.rs_instance = RefreshStatistic()
 
+    def debug_log(self, message):
+        """Write debug message to both console and debug.log file"""
+        if self.debug:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            log_message = f'[{timestamp}] {message}'
+            print(log_message)
+            if self.debug_log_file:
+                self.debug_log_file.write(log_message + '\n')
+                self.debug_log_file.flush()  # Ensure immediate write
+
+    def __del__(self):
+        """Cleanup: close debug log file if open"""
+        self._closeDebugLog()
+
     def randomDelay(self):
         """Add a random delay for anti-detection"""
         delay = random.uniform(self.RANDOM_DELAY_MIN, self.RANDOM_DELAY_MAX)
         if self.debug and delay > 0.05:
-            print(f'[DEBUG] Random delay: {delay*1000:.0f}ms')
+            self.debug_log(f'[DEBUG] Random delay: {delay*1000:.0f}ms')
         time.sleep(delay)
 
     def randomClickOffset(self):
@@ -159,7 +179,7 @@ class SecretShopRefresh:
         offset_x = random.randint(-self.CLICK_OFFSET_MAX, self.CLICK_OFFSET_MAX)
         offset_y = random.randint(-self.CLICK_OFFSET_MAX, self.CLICK_OFFSET_MAX)
         if self.debug:
-            print(f'[DEBUG] Click offset: ({offset_x:+d}, {offset_y:+d}) pixels')
+            self.debug_log(f'[DEBUG] Click offset: ({offset_x:+d}, {offset_y:+d}) pixels')
         return offset_x, offset_y
 
     def randomClick(self):
@@ -167,7 +187,7 @@ class SecretShopRefresh:
         is_double = random.random() < self.DOUBLE_CLICK_CHANCE
         if self.debug:
             click_type = "double-click" if is_double else "single-click"
-            print(f'[DEBUG] Click type: {click_type}')
+            self.debug_log(f'[DEBUG] Click type: {click_type}')
         if is_double:
             pyautogui.click(clicks=2, interval=self.MOUSE_SLEEP)
         else:
@@ -187,7 +207,7 @@ class SecretShopRefresh:
             return False
         except Exception as e:
             if self.debug:
-                print(f'[DEBUG] Error checking shop status: {e}')
+                self.debug_log(f'[DEBUG] Error checking shop status: {e}')
             return False
 
     def waitForShop(self, max_wait_seconds=30):
@@ -198,7 +218,7 @@ class SecretShopRefresh:
         while total_waited < max_wait_seconds and self.loop_active:
             if self.isInShop():
                 if self.debug:
-                    print('[DEBUG] Shop detected - resuming')
+                    self.debug_log('[DEBUG] Shop detected - resuming')
                 return True
 
             print(f'[WAITING] Not in shop - waiting... ({int(total_waited)}s)')
@@ -283,6 +303,15 @@ class SecretShopRefresh:
 
     def refreshFinishCallback(self):
         print('Terminated!')
+        self._closeDebugLog()
+    
+    def _closeDebugLog(self):
+        """Close the debug log file if open"""
+        if hasattr(self, 'debug_log_file') and self.debug_log_file:
+            if self.debug:
+                self.debug_log(f'\n{"="*60}\nDebug session ended at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n{"="*60}\n')
+            self.debug_log_file.close()
+            self.debug_log_file = None
 
     def shopRefreshLoop(self):
         try:
@@ -345,7 +374,7 @@ class SecretShopRefresh:
                 loop_count += 1
 
                 if self.debug:
-                    print(f'\n[DEBUG] ══════ Loop #{loop_count} started ══════')
+                    self.debug_log(f'\n[DEBUG] ══════ Loop #{loop_count} started ══════')
 
                 if not self.isInShop():
                     if not self.waitForShop():
@@ -389,7 +418,7 @@ class SecretShopRefresh:
 
                 if self.debug:
                     loop_duration = time.time() - loop_start_time
-                    print(f'[DEBUG] ══════ Loop #{loop_count} completed in {loop_duration:.2f}s ══════')
+                    self.debug_log(f'[DEBUG] ══════ Loop #{loop_count} completed in {loop_duration:.2f}s ══════')
 
                 time.sleep(self.MOUSE_SLEEP)
                 if self.window.title != self.title_name: break
@@ -400,8 +429,15 @@ class SecretShopRefresh:
             self.rs_instance.writeToCSV()
             self.loop_active = False
             self.loop_finish = True
+            self._closeDebugLog()
             self.callback()
             return
+        if hint: hint.destroy()
+        self.rs_instance.writeToCSV()
+        self.loop_active = False
+        self.loop_finish = True
+        self._closeDebugLog()
+        self.callback()
 
         if hint: hint.destroy()
         self.rs_instance.writeToCSV()
@@ -485,7 +521,7 @@ class SecretShopRefresh:
                 pos = self.findItemPosition(process_screenshot, shop_item.scaled_image, item_name=key)
                 if pos is not None:
                     if self.debug:
-                        print(f'[DEBUG] Found "{key}"{debug_suffix} - clicking buy button')
+                        self.debug_log(f'[DEBUG] Found "{key}"{debug_suffix} - clicking buy button')
                     self.clickBuy(pos)
                     shop_item.count += 1
                     bought.add(key)
@@ -508,7 +544,7 @@ class SecretShopRefresh:
 
         if self.debug:
             status = "FOUND" if loc[0].size > 0 else "not found"
-            print(f'[DEBUG] Searching for "{item_name}" - confidence: {max_val:.3f}, {status}')
+            self.debug_log(f'[DEBUG] Searching for "{item_name}" - confidence: {max_val:.3f}, {status}')
 
         if loc[0].size > 0:
             item_x = loc[1][0]
@@ -618,7 +654,7 @@ class SecretShopRefresh:
 
     def clickConfirmBuy(self):
         if self.debug:
-            print('[DEBUG] Clicking confirm buy button')
+            self.debug_log('[DEBUG] Clicking confirm buy button')
         self.randomDelay()
         self.clickButtonByImage(
             self.confirm_buy_btn,
@@ -636,7 +672,7 @@ class SecretShopRefresh:
             True if refresh succeeded, False if user is out of gold
         """
         if self.debug:
-            print('[DEBUG] Clicking refresh button')
+            self.debug_log('[DEBUG] Clicking refresh button')
         self.randomDelay()
         self.clickButtonByImage(
             self.refresh_btn,
@@ -654,7 +690,7 @@ class SecretShopRefresh:
             True if refresh succeeded, False if user is out of gold
         """
         if self.debug:
-            print('[DEBUG] Clicking confirm refresh button')
+            self.debug_log('[DEBUG] Clicking confirm refresh button')
         self.randomDelay()
         self.clickButtonByImage(
             self.confirm_btn,
@@ -685,7 +721,7 @@ class SecretShopRefresh:
 
         if confirm_pos is not None:
             if self.debug:
-                print('[DEBUG] Detected another confirm button - possible out of skystones popup')
+                self.debug_log('[DEBUG] Detected another confirm button - possible out of skystones popup')
 
             x, y = confirm_pos
             offset_x, offset_y = self.randomClickOffset()
@@ -705,7 +741,7 @@ class SecretShopRefresh:
                 return False
             else:
                 if self.debug:
-                    print('[DEBUG] Refresh button still visible - was just a missed click')
+                    self.debug_log('[DEBUG] Refresh button still visible - was just a missed click')
 
         return True
 
@@ -718,7 +754,7 @@ class SecretShopRefresh:
         total_scroll = base_scroll + (base_scroll * extra_scroll)
 
         if self.debug:
-            print(f'[DEBUG] Scrolling shop (base: {base_scroll:.3f}, extra: {extra_scroll*100:.1f}%)')
+            self.debug_log(f'[DEBUG] Scrolling shop (base: {base_scroll:.3f}, extra: {extra_scroll*100:.1f}%)')
 
         self.randomDelay()
         pyautogui.moveTo(x, y)
