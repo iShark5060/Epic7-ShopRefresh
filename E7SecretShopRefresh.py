@@ -97,14 +97,14 @@ class RefreshStatistic:
             writer.writerow(data)
 
 class SecretShopRefresh:
-    REFERENCE_WIDTH = 2663
-    REFERENCE_HEIGHT = 1173
+    REFERENCE_WIDTH = 3840
+    REFERENCE_HEIGHT = 1600
 
     MOUSE_SLEEP = 0.15
     SCREENSHOT_SLEEP = 0.15
 
     RANDOM_DELAY_MIN = 0.0
-    RANDOM_DELAY_MAX = 0.25
+    RANDOM_DELAY_MAX = 0.1
     CLICK_OFFSET_MAX = 10
     DOUBLE_CLICK_CHANCE = 0.3
     SCROLL_RANDOM_EXTRA_MIN = 0.0
@@ -136,15 +136,15 @@ class SecretShopRefresh:
         self.allow_move = allow_move
         self.join_thread = join_thread
         self.scale_factor = 1.0
-        self.refresh_btn_original = self._loadGrayAsset('refresh.png')
+        self.refresh_btn_original = self._loadGrayAsset('button_refresh.png')
         self.refresh_btn = self.refresh_btn_original
-        self.confirm_btn_original = self._loadGrayAsset('confirm.png')
+        self.confirm_btn_original = self._loadGrayAsset('button_refresh_confirm.png')
         self.confirm_btn = self.confirm_btn_original
-        self.confirm_buy_btn_original = self._loadGrayAsset('confirm_buy.png')
+        self.confirm_buy_btn_original = self._loadGrayAsset('button_buy_confirm.png')
         self.confirm_buy_btn = self.confirm_buy_btn_original
-        self.buy_btn_original = self._loadGrayAsset('buy.png')
+        self.buy_btn_original = self._loadGrayAsset('button_buy.png')
         self.buy_btn = self.buy_btn_original
-        self.sold_indicator_original = self._loadGrayAsset('sold.png')
+        self.sold_indicator_original = self._loadGrayAsset('button_buy_sold.png')
         self.sold_indicator = self.sold_indicator_original
         self.title_name = title_name
         windows = gw.getWindowsWithTitle(self.title_name)
@@ -202,7 +202,8 @@ class SecretShopRefresh:
             process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
 
             if self.refresh_btn is not None:
-                pos = self.findButtonPosition(process_screenshot, self.refresh_btn, threshold=self.SHOP_CHECK_THRESHOLD)
+                refresh_region = self.getSearchRegions()['refresh_btn']
+                pos = self.findButtonPosition(process_screenshot, self.refresh_btn, threshold=self.SHOP_CHECK_THRESHOLD, search_region=refresh_region)
                 return pos is not None
             return False
         except Exception as e:
@@ -240,6 +241,67 @@ class SecretShopRefresh:
         if image is None:
             return None
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    def getSearchRegions(self):
+        """Calculate optimized search regions based on reference window size (3840x1600).
+
+        Returns:
+            Dict with region definitions for each UI element:
+            - refresh_btn: bottom-left region
+            - confirm_btn: bottom-middle region (also catches out-of-gold popup)
+            - items_search: left-anchored vertical strip
+            - buy_btn: relative to found item (handled separately)
+            - confirm_buy_btn: bottom-middle region
+        """
+        # Scale factors for current window vs reference
+        width_scale = self.window.width / self.REFERENCE_WIDTH
+        height_scale = self.window.height / self.REFERENCE_HEIGHT
+
+        regions = {}
+
+        # Refresh button: anchor bottom-left, margin: 0, size: 1442 x 273
+        # (Originally 1000 x 200 at 2663x1173, scaled to 3840x1600: 1000*1.442, 200*1.364)
+        refresh_w = int(1442 * width_scale)
+        refresh_h = int(273 * height_scale)
+        regions['refresh_btn'] = (0, self.window.height - refresh_h, refresh_w, refresh_h)
+
+        # Refresh confirm button: anchor bottom-middle, margin-bottom: 273, size: 433 x 477
+        # (Originally 300 x 350, margin-bottom: 200 at 2663x1173, scaled to 3840x1600)
+        confirm_w = int(433 * width_scale)
+        confirm_h = int(477 * height_scale)
+        confirm_x = (self.window.width - confirm_w) // 2
+        confirm_y = self.window.height - int(273 * height_scale) - confirm_h
+        regions['confirm_btn'] = (confirm_x, confirm_y, confirm_w, confirm_h)
+
+        # Items search area: anchor left, margin-left: 1687, size: 288 x 100%
+        # (Originally 1170, width: 200 at 2663x1173, scaled to 3840x1600)
+        items_x = int(1687 * width_scale)
+        items_w = int(288 * width_scale)
+        items_h = self.window.height  # 100% height
+        regions['items_search'] = (items_x, 0, items_w, items_h)
+
+        # Buy button: anchor top-left of found image, margin-left: 1082, size: 505 x 239
+        # (Originally 750, size: 350 x 175 at 2663x1173, scaled to 3840x1600)
+        # This is relative to found item position, so we'll return the margin and size for calculation
+        # The ROI is calculated in findItemPosition() after finding the item
+        buy_margin_x = int(1082 * width_scale)
+        buy_w = int(505 * width_scale)
+        buy_h = int(239 * height_scale)
+        regions['buy_btn'] = {'margin_x': buy_margin_x, 'width': buy_w, 'height': buy_h,
+                             'note': 'Relative to found item - calculated dynamically in findItemPosition()'}
+
+        # Buy confirmation button: anchor bottom-center, go up by margin-bottom, then right and up by size
+        # (Originally 450 x 120, margin-bottom: 275 at 2663x1173, scaled to 3840x1600)
+        # Measurement method: from bottom center, measure up (margin-bottom), then right and up (width x height)
+        # Reference values at 3840x1600: width=649, height=164, margin-bottom=375
+        confirm_buy_w = int(649 * width_scale)
+        confirm_buy_h = int(164 * height_scale)
+        confirm_buy_margin_bottom = int(375 * height_scale)
+        confirm_buy_x = self.window.width // 2  # Start from center, extend to the right
+        confirm_buy_y = self.window.height - confirm_buy_margin_bottom - confirm_buy_h
+        regions['confirm_buy_btn'] = (confirm_buy_x, confirm_buy_y, confirm_buy_w, confirm_buy_h)
+
+        return regions
 
     def updateScaleFactor(self):
         """Calculate scale factor based on current window size vs reference resolution"""
@@ -304,7 +366,7 @@ class SecretShopRefresh:
     def refreshFinishCallback(self):
         print('Terminated!')
         self._closeDebugLog()
-    
+
     def _closeDebugLog(self):
         """Close the debug log file if open"""
         if hasattr(self, 'debug_log_file') and self.debug_log_file:
@@ -512,13 +574,15 @@ class SecretShopRefresh:
         Returns:
             Updated process_screenshot after any purchases
         """
+        # Get cropped search region for items
+        items_region = self.getSearchRegions()['items_search']
         found_any = True
         while found_any and self.loop_active:
             found_any = False
             for key, shop_item in self.rs_instance.getInventory().items():
                 if key in bought:
                     continue
-                pos = self.findItemPosition(process_screenshot, shop_item.scaled_image, item_name=key)
+                pos = self.findItemPosition(process_screenshot, shop_item.scaled_image, item_name=key, search_region=items_region)
                 if pos is not None:
                     if self.debug:
                         self.debug_log(f'[DEBUG] Found "{key}"{debug_suffix} - clicking buy button')
@@ -534,7 +598,41 @@ class SecretShopRefresh:
                     break
         return process_screenshot
 
-    def findItemPosition(self, process_screenshot, process_item, item_name='unknown'):
+    def findItemPosition(self, process_screenshot, process_item, item_name='unknown', search_region=None):
+        """Find an item in the screenshot and return the buy button position.
+
+        Args:
+            process_screenshot: Grayscale screenshot to search in
+            process_item: Template image of the item to find
+            item_name: Name of the item for debugging
+            search_region: Optional tuple (x, y, width, height) to limit search area
+
+        Returns:
+            Tuple (x, y) of buy button center in screen coordinates, or None
+        """
+        search_start_time = time.time()
+
+        # Keep reference to full screenshot for buy button ROI extraction
+        full_screenshot = process_screenshot.copy()
+
+        # Crop to search region if specified
+        region_offset = (0, 0)
+        if search_region is not None:
+            x, y, w, h = search_region
+            item_h, item_w = process_item.shape[:2]
+
+            # Check if search region is large enough for the template
+            if w < item_w or h < item_h:
+                if self.debug:
+                    self.debug_log(f'[ITEM_SEARCH] Search region too small ({w}x{h}) for template ({item_w}x{item_h}), using full screenshot')
+                search_region = None  # Fall back to full screenshot
+                region_offset = (0, 0)
+            else:
+                region_offset = (x, y)
+                process_screenshot = process_screenshot[y:y+h, x:x+w]
+                if self.debug:
+                    self.debug_log(f'[ITEM_SEARCH] Limited search to region: x={x}, y={y}, w={w}, h={h}')
+
         process_screenshot = cv2.GaussianBlur(process_screenshot, (3, 3), 0)
         process_item = cv2.GaussianBlur(process_item, (3, 3), 0)
 
@@ -542,49 +640,131 @@ class SecretShopRefresh:
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         loc = np.where(result >= self.ITEM_MATCH_THRESHOLD)
 
+        item_search_time = (time.time() - search_start_time) * 1000
+
         if self.debug:
             status = "FOUND" if loc[0].size > 0 else "not found"
-            self.debug_log(f'[DEBUG] Searching for "{item_name}" - confidence: {max_val:.3f}, {status}')
+            self.debug_log(f'[ITEM_SEARCH] Searching for "{item_name}" - confidence: {max_val:.3f}, {status}')
+            self.debug_log(f'[ITEM_SEARCH] Search time: {item_search_time:.2f}ms')
+            if loc[0].size > 0:
+                self.debug_log(f'[ITEM_SEARCH] Top-left corner (in search area): x={max_loc[0]}, y={max_loc[1]}')
 
         if loc[0].size > 0:
-            item_x = loc[1][0]
-            item_y = loc[0][0]
+            item_x = loc[1][0] + region_offset[0]  # Adjust for region offset
+            item_y = loc[0][0] + region_offset[1]
             item_h, item_w = process_item.shape[:2]
 
-            roi_x_start = item_x + item_w
-            roi_y_start = max(0, item_y - item_h)
-            roi_y_end = min(process_screenshot.shape[0], item_y + item_h * 2)
+            if self.debug:
+                self.debug_log(f'[ITEM_SEARCH] Item found at (screen): ({self.window.left + item_x}, {self.window.top + item_y})')
+                self.debug_log(f'[ITEM_SEARCH] Item size: {item_w}x{item_h}')
 
-            roi = process_screenshot[roi_y_start:roi_y_end, roi_x_start:]
+            # Buy button position: anchor is top-left of item, margin-left from getSearchRegions
+            buy_info = self.getSearchRegions()['buy_btn']
+            roi_x_start = item_x + buy_info['margin_x']  # From item's left edge (in screen coordinates)
+            roi_y_start = item_y  # Same Y as item (in screen coordinates)
+            roi_y_end = item_y + buy_info['height']  # Fixed height
+
+            # Use full screenshot for ROI extraction (buy button is outside items search region)
+            screenshot_h, screenshot_w = full_screenshot.shape[:2]
+            roi_y_end = min(screenshot_h, roi_y_end)
+            roi_y_start = max(0, roi_y_start)
+            roi_x_start = max(0, roi_x_start)
+            roi_x_end = min(screenshot_w, roi_x_start + buy_info['width'])
+
+            # Extract ROI from full screenshot
+            if roi_y_end > roi_y_start and roi_x_end > roi_x_start:
+                roi = full_screenshot[roi_y_start:roi_y_end, roi_x_start:roi_x_end]
+            else:
+                if self.debug:
+                    self.debug_log(f'[ITEM_SEARCH] Invalid ROI bounds: x={roi_x_start}-{roi_x_end}, y={roi_y_start}-{roi_y_end}, screenshot={screenshot_w}x{screenshot_h}')
+                return None
 
             if roi.size > 0:
+                if self.debug:
+                    self.debug_log(f'[ITEM_SEARCH] ROI size: {roi.shape[1]}x{roi.shape[0]} (x: {roi_x_start}, y: {roi_y_start}-{roi_y_end})')
+
                 roi_blurred = cv2.GaussianBlur(roi, (3, 3), 0)
 
                 if self.buy_btn is not None:
+                    buy_btn_h, buy_btn_w = self.buy_btn.shape[:2]
+                    roi_h, roi_w = roi.shape[:2]
+
+                    # Check if ROI is large enough for buy button template
+                    if roi_w < buy_btn_w or roi_h < buy_btn_h:
+                        if self.debug:
+                            self.debug_log(f'[BUY_BUTTON] ROI too small ({roi_w}x{roi_h}) for buy button template ({buy_btn_w}x{buy_btn_h}), skipping')
+                        return None
+
+                    buy_search_start = time.time()
                     buy_btn_blurred = cv2.GaussianBlur(self.buy_btn, (3, 3), 0)
                     buy_result = cv2.matchTemplate(roi_blurred, buy_btn_blurred, cv2.TM_CCOEFF_NORMED)
-                    _, max_val, _, max_loc = cv2.minMaxLoc(buy_result)
+                    _, buy_max_val, _, buy_max_loc = cv2.minMaxLoc(buy_result)
+                    buy_search_time = (time.time() - buy_search_start) * 1000
 
-                    if max_val >= self.BUY_BUTTON_THRESHOLD:
+                    if self.debug:
+                        self.debug_log(f'[BUY_BUTTON] Search time: {buy_search_time:.2f}ms, confidence: {buy_max_val:.3f}')
+
+                    if buy_max_val >= self.BUY_BUTTON_THRESHOLD:
                         btn_h, btn_w = self.buy_btn.shape[:2]
-                        x = self.window.left + roi_x_start + max_loc[0] + btn_w // 2
-                        y = self.window.top + roi_y_start + max_loc[1] + btn_h // 2
+                        buy_top_left_x = roi_x_start + buy_max_loc[0]
+                        buy_top_left_y = roi_y_start + buy_max_loc[1]
+                        x = self.window.left + buy_top_left_x + btn_w // 2
+                        y = self.window.top + buy_top_left_y + btn_h // 2
+
+                        if self.debug:
+                            self.debug_log(f'[BUY_BUTTON] Found! Top-left (screen): ({self.window.left + buy_top_left_x}, {self.window.top + buy_top_left_y})')
+                            self.debug_log(f'[BUY_BUTTON] Center (screen): ({x}, {y})')
+
                         return (x, y)
+                    elif self.debug:
+                        self.debug_log(f'[BUY_BUTTON] Not found (confidence {buy_max_val:.3f} < threshold {self.BUY_BUTTON_THRESHOLD:.3f})')
 
                 if self.sold_indicator is not None:
                     sold_blurred = cv2.GaussianBlur(self.sold_indicator, (3, 3), 0)
                     sold_result = cv2.matchTemplate(roi_blurred, sold_blurred, cv2.TM_CCOEFF_NORMED)
                     _, sold_max_val, _, _ = cv2.minMaxLoc(sold_result)
                     if sold_max_val >= self.SOLD_INDICATOR_THRESHOLD:
+                        if self.debug:
+                            self.debug_log(f'[SOLD] Item already sold (confidence: {sold_max_val:.3f})')
                         return None
 
             return None
         return None
 
-    def findButtonPosition(self, process_screenshot, button_image, threshold=0.8):
-        """Find a button in the screenshot and return its center position"""
+    def findButtonPosition(self, process_screenshot, button_image, threshold=0.8, search_region=None, region_offset=(0, 0)):
+        """Find a button in the screenshot and return its center position.
+
+        Args:
+            process_screenshot: Grayscale screenshot to search in
+            button_image: Template image to find
+            threshold: Minimum match confidence (0.0-1.0)
+            search_region: Optional tuple (x, y, width, height) to limit search area
+            region_offset: Offset to add to coordinates if searching in a cropped region
+
+        Returns:
+            Tuple (center_x, center_y) in screen coordinates, or None if not found
+        """
         if button_image is None:
             return None
+
+        search_start_time = time.time()
+
+        # Crop to search region if specified
+        if search_region is not None:
+            x, y, w, h = search_region
+            btn_h, btn_w = button_image.shape[:2]
+
+            # Check if search region is large enough for the template
+            if w < btn_w or h < btn_h:
+                if self.debug:
+                    self.debug_log(f'[MATCH] Search region too small ({w}x{h}) for template ({btn_w}x{btn_h}), using full screenshot')
+                search_region = None  # Fall back to full screenshot
+                region_offset = (0, 0)
+            else:
+                region_offset = (x, y)
+                process_screenshot = process_screenshot[y:y+h, x:x+w]
+                if self.debug:
+                    self.debug_log(f'[MATCH] Limited search to region: x={x}, y={y}, w={w}, h={h}')
 
         process_screenshot = cv2.GaussianBlur(process_screenshot, (3, 3), 0)
         button_image = cv2.GaussianBlur(button_image, (3, 3), 0)
@@ -592,14 +772,42 @@ class SecretShopRefresh:
         result = cv2.matchTemplate(process_screenshot, button_image, cv2.TM_CCOEFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
+        search_time = (time.time() - search_start_time) * 1000  # Convert to ms
+
+        if self.debug:
+            self.debug_log(f'[MATCH] Template match result: confidence={max_val:.3f}, threshold={threshold:.3f}')
+            self.debug_log(f'[MATCH] Top-left corner (in search area): x={max_loc[0]}, y={max_loc[1]}')
+            self.debug_log(f'[MATCH] Search time: {search_time:.2f}ms')
+
         if max_val >= threshold:
             btn_h, btn_w = button_image.shape[:2]
-            center_x = self.window.left + max_loc[0] + btn_w // 2
-            center_y = self.window.top + max_loc[1] + btn_h // 2
+
+            # Top-left corner in the search area
+            top_left_x = max_loc[0] + region_offset[0]
+            top_left_y = max_loc[1] + region_offset[1]
+
+            # Center of the button in the search area
+            center_x_in_area = top_left_x + btn_w // 2
+            center_y_in_area = top_left_y + btn_h // 2
+
+            # Convert to screen coordinates
+            center_x = self.window.left + center_x_in_area
+            center_y = self.window.top + center_y_in_area
+
+            if self.debug:
+                self.debug_log(f'[MATCH] Button size: {btn_w}x{btn_h}')
+                self.debug_log(f'[MATCH] Top-left (screen): ({self.window.left + top_left_x}, {self.window.top + top_left_y})')
+                self.debug_log(f'[MATCH] Center (screen): ({center_x}, {center_y})')
+                self.debug_log(f'[MATCH] ✓ Match found! Returning center coordinates.')
+
             return (center_x, center_y)
+
+        if self.debug:
+            self.debug_log(f'[MATCH] ✗ No match found (confidence {max_val:.3f} < threshold {threshold:.3f})')
+
         return None
 
-    def clickButtonByImage(self, button_image, fallback_x_ratio=None, fallback_y_ratio=None, threshold=0.8, max_retries=3):
+    def clickButtonByImage(self, button_image, fallback_x_ratio=None, fallback_y_ratio=None, threshold=0.8, max_retries=3, search_region=None):
         """Find and click a button using image detection, with optional fallback to fixed coordinates"""
         for attempt in range(max_retries):
             screenshot = self.takeScreenshot()
@@ -607,7 +815,7 @@ class SecretShopRefresh:
                 continue
             process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
 
-            pos = self.findButtonPosition(process_screenshot, button_image, threshold)
+            pos = self.findButtonPosition(process_screenshot, button_image, threshold, search_region=search_region)
             if pos is not None:
                 x, y = pos
                 offset_x, offset_y = self.randomClickOffset()
@@ -656,11 +864,16 @@ class SecretShopRefresh:
         if self.debug:
             self.debug_log('[DEBUG] Clicking confirm buy button')
         self.randomDelay()
+        confirm_buy_region = self.getSearchRegions()['confirm_buy_btn']
+        if self.debug:
+            x, y, w, h = confirm_buy_region
+            self.debug_log(f'[DEBUG] Confirm buy search region: x={x}, y={y}, w={w}, h={h} (window: {self.window.width}x{self.window.height})')
         self.clickButtonByImage(
             self.confirm_buy_btn,
             fallback_x_ratio=0.55,
             fallback_y_ratio=0.70,
-            threshold=self.BUTTON_MATCH_THRESHOLD
+            threshold=self.BUTTON_MATCH_THRESHOLD,
+            search_region=confirm_buy_region
         )
         time.sleep(self.MOUSE_SLEEP)
         time.sleep(self.SCREENSHOT_SLEEP)
@@ -674,11 +887,13 @@ class SecretShopRefresh:
         if self.debug:
             self.debug_log('[DEBUG] Clicking refresh button')
         self.randomDelay()
+        refresh_region = self.getSearchRegions()['refresh_btn']
         self.clickButtonByImage(
             self.refresh_btn,
             fallback_x_ratio=0.20,
             fallback_y_ratio=0.90,
-            threshold=self.BUTTON_MATCH_THRESHOLD
+            threshold=self.BUTTON_MATCH_THRESHOLD,
+            search_region=refresh_region
         )
         time.sleep(self.MOUSE_SLEEP)
         return self.clickConfirmRefresh()
@@ -692,11 +907,13 @@ class SecretShopRefresh:
         if self.debug:
             self.debug_log('[DEBUG] Clicking confirm refresh button')
         self.randomDelay()
+        confirm_region = self.getSearchRegions()['confirm_btn']
         self.clickButtonByImage(
             self.confirm_btn,
             fallback_x_ratio=0.58,
             fallback_y_ratio=0.65,
-            threshold=self.BUTTON_MATCH_THRESHOLD
+            threshold=self.BUTTON_MATCH_THRESHOLD,
+            search_region=confirm_region
         )
         time.sleep(self.SCREENSHOT_SLEEP)
 
@@ -717,7 +934,8 @@ class SecretShopRefresh:
 
         process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
 
-        confirm_pos = self.findButtonPosition(process_screenshot, self.confirm_btn, self.BUTTON_MATCH_THRESHOLD)
+        confirm_region = self.getSearchRegions()['confirm_btn']
+        confirm_pos = self.findButtonPosition(process_screenshot, self.confirm_btn, self.BUTTON_MATCH_THRESHOLD, search_region=confirm_region)
 
         if confirm_pos is not None:
             if self.debug:
@@ -734,7 +952,8 @@ class SecretShopRefresh:
                 return True
 
             process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-            refresh_pos = self.findButtonPosition(process_screenshot, self.refresh_btn, self.BUTTON_MATCH_THRESHOLD)
+            refresh_region = self.getSearchRegions()['refresh_btn']
+            refresh_pos = self.findButtonPosition(process_screenshot, self.refresh_btn, self.BUTTON_MATCH_THRESHOLD, search_region=refresh_region)
 
             if refresh_pos is None:
                 print('[INFO] Out of skystones! User has been redirected to shop. Stopping script.')
@@ -773,10 +992,10 @@ class AppConfig():
                                  'MuMu Player 12',
                                  '에픽세븐',
                                  'Google Play Games on PC Emulator'}
-        self.ALL_ITEMS = [['covenant.png', 'Covenant bookmark', 184000],
-                          ['mystic.png', 'Mystic medal', 280000],
-                          ['friendship.png', 'Friendship bookmark', 18000]]
-        self.MANDATORY_PATH = {'covenant.png', 'mystic.png'}
+        self.ALL_ITEMS = [['item_covenant.png', 'Covenant bookmark', 184000],
+                          ['item_mystic.png', 'Mystic medal', 280000],
+                          ['item_friendship.png', 'Friendship bookmark', 18000]]
+        self.MANDATORY_PATH = {'item_covenant.png', 'item_mystic.png'}
         self.DEBUG = False
 
 class AutoRefreshGUI:
@@ -792,10 +1011,10 @@ class AutoRefreshGUI:
         self.root.geometry('420x590')
         self.root.minsize(420, 540)
 
-        icon_path = get_asset_path(os.path.join('assets', 'gui_icon.ico'))
+        icon_path = get_asset_path(os.path.join('assets', 'icon.ico'))
         self.root.iconbitmap(icon_path)
         self.title_name = ''
-        self.ignore_path = {'friendship.png'}
+        self.ignore_path = {'item_friendship.png'}
         self.keep_image_open = []
         self.lock_start_button = False
         self.budget = ''
