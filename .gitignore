@@ -15,3 +15,7 @@ dist/
 # E7SecretShopRefresh.py
 ShopRefreshHistory/
 ADBconfig.ini
+
+# Debug Files
+debug/
+debug.log
