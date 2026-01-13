@@ -163,6 +163,7 @@ class SecretShopRefresh:
         self._cached_search_regions_window_size = None
         self._cached_window_size = None
         self._cached_blurred_buttons = {}
+        self._cached_blurred_items = {}
         self._cached_window_props = None
         self._cached_screenshot_region = None
         self._mss_instance = None
@@ -472,6 +473,7 @@ class SecretShopRefresh:
                 shop_item.scaled_image = self.scaleImage(shop_item.image)
 
         self._cached_blurred_buttons.clear()
+        self._cached_blurred_items.clear()
 
     def scaleImage(self, image, custom_scale=None):
         """Scale an image by the current scale factor (or custom scale if provided)"""
@@ -921,13 +923,17 @@ class SecretShopRefresh:
                     self.debug_log(f'[ITEM_SEARCH] Limited search to region: x={x}, y={y}, w={w}, h={h}')
 
         process_screenshot = cv2.GaussianBlur(process_screenshot, (3, 3), 0)
-        process_item = cv2.GaussianBlur(process_item, (3, 3), 0)
 
-        result = cv2.matchTemplate(process_screenshot, process_item, cv2.TM_CCOEFF_NORMED)
+        if item_name not in self._cached_blurred_items:
+            self._cached_blurred_items[item_name] = cv2.GaussianBlur(process_item, (3, 3), 0)
+        process_item_blurred = self._cached_blurred_items[item_name]
+
+        result = cv2.matchTemplate(process_screenshot, process_item_blurred, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
         threshold = self.ITEM_MATCH_THRESHOLD
-        if 'mystic' in item_name.lower():
+        item_name_lower = item_name.lower()
+        if 'mystic' in item_name_lower:
             threshold = max(0.70, self.ITEM_MATCH_THRESHOLD - 0.05)
             if self.debug:
                 self.debug_log(f'[ITEM_SEARCH] Using lower threshold for mystic item: {threshold:.3f} (normal: {self.ITEM_MATCH_THRESHOLD:.3f})')
@@ -946,7 +952,7 @@ class SecretShopRefresh:
         if loc[0].size > 0:
             item_x = loc[1][0] + region_offset[0]
             item_y = loc[0][0] + region_offset[1]
-            item_h, item_w = process_item.shape[:2]
+            item_h, item_w = process_item_blurred.shape[:2]
 
             if self.debug:
                 if self._cached_window_props:
