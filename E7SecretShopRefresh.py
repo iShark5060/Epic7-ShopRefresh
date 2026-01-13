@@ -11,12 +11,15 @@ import re
 import argparse
 import pyautogui
 import pygetwindow as gw
+from pygetwindow import PyGetWindowException
 import cv2
 import numpy as np
 import keyboard
-from PIL import ImageGrab
+import mss
 import random
+import logging
 
+logger = logging.getLogger(__name__)
 def get_asset_path(relative_path):
     """Get the correct path for assets, works for both dev and PyInstaller bundle"""
     if getattr(sys, 'frozen', False):
@@ -119,6 +122,7 @@ class SecretShopRefresh:
         self.debug = debug
         self.save_screenshots = save_screenshots
         self.debug_log_file = None
+        self._debug_log_counter = 0
         if self.debug:
             log_path = os.path.join(os.getcwd(), 'debug.log')
             self.debug_log_file = open(log_path, 'a', encoding='utf-8')
@@ -151,6 +155,18 @@ class SecretShopRefresh:
         self.tk_instance = tk_instance
         self.rs_instance = RefreshStatistic()
 
+        pyautogui.FAILSAFE = True
+        pyautogui.PAUSE = 0
+        self._cached_search_regions = None
+        self._cached_aspect_ratio = None
+        self._cached_aspect_window_size = None
+        self._cached_search_regions_window_size = None
+        self._cached_window_size = None
+        self._cached_blurred_buttons = {}
+        self._cached_window_props = None
+        self._cached_screenshot_region = None
+        self._mss_instance = None
+
     def debug_log(self, message):
         """Write debug message to both console and debug.log file"""
         if self.debug:
@@ -159,7 +175,9 @@ class SecretShopRefresh:
             print(log_message)
             if self.debug_log_file:
                 self.debug_log_file.write(log_message + '\n')
-                self.debug_log_file.flush()
+                self._debug_log_counter += 1
+                if self._debug_log_counter % 10 == 0 or 'ERROR' in message or 'WARNING' in message:
+                    self.debug_log_file.flush()
 
     def __del__(self):
         """Cleanup: close debug log file if open"""
@@ -197,9 +215,9 @@ class SecretShopRefresh:
 
             if self.refresh_btn is not None:
                 refresh_region = self.getSearchRegions()['refresh_btn']
-                aspect_ratio = self.window.width / self.window.height
+                aspect_ratio = self.getAspectRatio()
                 threshold = self.SHOP_CHECK_THRESHOLD
-                if 1.6 <= aspect_ratio <= 1.8:
+                if aspect_ratio == '16:9':
                     threshold = max(0.65, threshold - 0.05)
                 pos = self.findButtonPosition(process_screenshot, self.refresh_btn, threshold=threshold, search_region=refresh_region, button_name="refresh button")
                 return pos is not None
@@ -246,14 +264,18 @@ class SecretShopRefresh:
         Returns:
             str: '21:9' for ultrawide, '16:9' for standard widescreen, or 'other'
         """
-        aspect_ratio = self.window.width / self.window.height
+        current_size = (self.window.width, self.window.height)
+        if (self._cached_aspect_ratio is not None and
+            self._cached_aspect_window_size == current_size):
+            return self._cached_aspect_ratio
 
-        if aspect_ratio >= 2.0:
-            return '21:9'
-        elif aspect_ratio >= 1.6:
-            return '16:9'
-        else:
-            return 'other'
+        aspect_ratio = self.window.width / self.window.height
+        result = '21:9' if aspect_ratio >= 2.0 else ('16:9' if aspect_ratio >= 1.6 else 'other')
+
+        self._cached_aspect_ratio = result
+        self._cached_aspect_window_size = current_size
+
+        return result
 
     def getSearchRegions(self):
         """Calculate optimized search regions based on reference window size.
@@ -272,6 +294,11 @@ class SecretShopRefresh:
             - buy_btn: relative to found item (handled separately)
             - confirm_buy_btn: bottom-middle region
         """
+        current_size = (self.window.width, self.window.height)
+        if (self._cached_search_regions is not None and
+            self._cached_search_regions_window_size == current_size):
+            return self._cached_search_regions
+
         aspect_ratio = self.getAspectRatio()
 
         if aspect_ratio == '16:9':
@@ -369,6 +396,9 @@ class SecretShopRefresh:
         confirm_buy_y = self.window.height - confirm_buy_margin_bottom - confirm_buy_h
         regions['confirm_buy_btn'] = (confirm_buy_x, confirm_buy_y, confirm_buy_w, confirm_buy_h)
 
+        self._cached_search_regions = regions
+        self._cached_search_regions_window_size = current_size
+
         return regions
 
     def updateScaleFactor(self):
@@ -380,37 +410,27 @@ class SecretShopRefresh:
 
         If scale factor is below 0.85, resizes the window to achieve at least 0.85 scaling.
         """
-        # Assets always use 3840x1600 reference (the default asset resolution)
-        asset_ref_width = 3840
         asset_ref_height = 1600
 
         aspect_ratio = self.getAspectRatio()
 
-        # Calculate current scale factor
         height_scale = self.window.height / asset_ref_height
         self.scale_factor = height_scale
 
-        # Target scale based on aspect ratio
-        # 21:9: Height 1000 works fine (scale 0.625)
-        # 16:9: Height 900 minimum (scale 0.5625)
         if aspect_ratio == '16:9':
-            target_height = 900  # Minimum height for 16:9
-            target_scale = target_height / asset_ref_height  # 0.5625
+            target_height = 900
+            target_scale = target_height / asset_ref_height
         else:
-            target_height = 1000  # Height ~1000 works fine for 21:9
-            target_scale = target_height / asset_ref_height  # 0.625
+            target_height = 1000
+            target_scale = target_height / asset_ref_height
 
-        # If scale is too low, resize window to target scale (separate handling for each aspect ratio)
         if self.scale_factor < target_scale:
             if aspect_ratio == '21:9':
-                # For 21:9: target height 1000, maintain 21:9 aspect ratio (~2.4:1)
                 current_aspect = self.window.width / self.window.height
                 target_width = int(target_height * current_aspect)
             elif aspect_ratio == '16:9':
-                # For 16:9: target height 900, maintain 16:9 aspect ratio (16/9 = 1.777...)
-                target_width = int(target_height * (16 / 9))  # 1600 pixels
+                target_width = int(target_height * (16 / 9))
             else:
-                # For other: maintain current aspect ratio
                 current_aspect = self.window.width / self.window.height
                 target_width = int(target_height * current_aspect)
 
@@ -419,10 +439,8 @@ class SecretShopRefresh:
 
             try:
                 self.window.resizeTo(target_width, target_height)
-                # Re-fetch window to get updated dimensions
                 windows = gw.getWindowsWithTitle(self.title_name)
                 self.window = next((w for w in windows if w.title == self.title_name), self.window)
-                # Update scale factor after resize
                 height_scale = self.window.height / asset_ref_height
                 self.scale_factor = height_scale
                 print(f'Window resized to {self.window.width}x{self.window.height} (scale: {self.scale_factor:.3f})')
@@ -452,6 +470,8 @@ class SecretShopRefresh:
         for shop_item in self.rs_instance.getInventory().values():
             if shop_item.image is not None:
                 shop_item.scaled_image = self.scaleImage(shop_item.image)
+
+        self._cached_blurred_buttons.clear()
 
     def scaleImage(self, image, custom_scale=None):
         """Scale an image by the current scale factor (or custom scale if provided)"""
@@ -498,6 +518,13 @@ class SecretShopRefresh:
             self.debug_log_file.close()
             self.debug_log_file = None
 
+        if hasattr(self, '_mss_instance') and self._mss_instance is not None:
+            try:
+                self._mss_instance.close()
+            except Exception:
+                logger.debug("error closing _mss_instance", exc_info=True)
+            self._mss_instance = None
+
     def _cleanupAndExit(self, hint=None):
         """Clean up resources and exit the refresh loop"""
         if hint:
@@ -507,7 +534,6 @@ class SecretShopRefresh:
         self.loop_finish = True
         self._closeDebugLog()
 
-        # Show summary window
         if self.tk_instance:
             self._showSummaryWindow()
 
@@ -526,19 +552,16 @@ class SecretShopRefresh:
         summary.iconbitmap(get_asset_path(os.path.join('assets', 'icon.ico')))
         summary.config(bg=bg_color)
 
-        # Center the window
         summary.update_idletasks()
         x = (summary.winfo_screenwidth() // 2) - (summary.winfo_width() // 2)
         y = (summary.winfo_screenheight() // 2) - (summary.winfo_height() // 2)
         summary.geometry(f'+{x}+{y}')
 
-        # Title
         title_frame = tk.Frame(summary, bg=bg_color, pady=20)
         title_frame.pack(fill=tk.X)
         tk.Label(title_frame, text='Shopping Summary', bg=bg_color, fg=fg_color,
                 font=('Segoe UI', 18, 'bold')).pack()
 
-        # Refresh count
         refresh_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
         refresh_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
         tk.Label(refresh_frame, text='Total Refreshes', bg=bg_secondary, fg=fg_secondary,
@@ -546,7 +569,6 @@ class SecretShopRefresh:
         tk.Label(refresh_frame, text=str(self.rs_instance.refresh_count), bg=bg_secondary,
                 fg='#88FF88', font=('Segoe UI', 24, 'bold')).pack(anchor='w', pady=(5, 0))
 
-        # Items found
         items_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
         items_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
         tk.Label(items_frame, text='Items Found', bg=bg_secondary, fg=fg_secondary,
@@ -570,7 +592,6 @@ class SecretShopRefresh:
             tk.Label(items_content, text='No items purchased', bg=bg_secondary, fg=fg_secondary,
                     font=('Segoe UI', 10, 'italic')).pack(pady=10)
 
-        # Total cost
         total_cost = self.rs_instance.getTotalCost()
         if total_cost > 0:
             cost_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
@@ -580,7 +601,6 @@ class SecretShopRefresh:
             tk.Label(cost_frame, text=f'{total_cost:,}', bg=bg_secondary,
                     fg='#FF6B6B', font=('Segoe UI', 18, 'bold')).pack(anchor='w', pady=(5, 0))
 
-        # Close button
         button_frame = tk.Frame(summary, bg=bg_color, pady=20)
         button_frame.pack(fill=tk.X)
         close_btn = tk.Button(button_frame, text='Close', command=summary.destroy,
@@ -591,7 +611,6 @@ class SecretShopRefresh:
         close_btn.bind('<Enter>', lambda e: close_btn.config(bg='#818cf8'))
         close_btn.bind('<Leave>', lambda e: close_btn.config(bg='#6366f1'))
 
-        # Bring window to front and focus
         summary.lift()
         summary.focus_force()
         summary.attributes('-topmost', True)
@@ -735,7 +754,7 @@ class SecretShopRefresh:
         hint.geometry(r'220x250+%d+%d' % (self.window.left, self.window.top))
         hint.title('Shopping')
         hint.iconbitmap(get_asset_path(os.path.join('assets', 'icon.ico')))
-        hint.attributes('-topmost', True)  # Always on top
+        hint.attributes('-topmost', True)
         tk.Label(master=hint, text='Press ESC to stop!', bg=bg_color, fg=fg_color, font=('Helvetica', 10)).pack(pady=(5,10))
         hint.config(bg=bg_color)
 
@@ -802,16 +821,33 @@ class SecretShopRefresh:
         cv2.imwrite(filename, screenshot_bgr)
         self.debug_log(f'[DEBUG] Saved screenshot: {filename}')
 
-    def takeScreenshot(self):
-        try:
-            try:
-                self.window.activate()
-            except Exception as e:
-                print(e)
+    def takeScreenshot(self, activate_window=True):
+        """Take a screenshot of the game window using mss for faster performance.
 
-            region=[self.window.left, self.window.top, self.window.width, self.window.height]
-            screenshot = ImageGrab.grab(bbox=(region[0], region[1], region[2] + region[0], region[3] + region[1]), all_screens=True)
+        Args:
+            activate_window: Whether to activate the window before taking screenshot (default: True)
+        """
+        try:
+            if activate_window:
+                try:
+                    self.window.activate()
+                except PyGetWindowException as e:
+                    self.debug_log(f'[WARNING] Failed to activate window: {e}')
+
+            current_size = (self.window.width, self.window.height)
+            if (self._cached_screenshot_region is None or
+                self._cached_window_size != current_size):
+                left, top = self.window.left, self.window.top
+                width, height = self.window.width, self.window.height
+                self._cached_window_props = (left, top, width, height)
+                self._cached_screenshot_region = {"top": top, "left": left, "width": width, "height": height}
+                self._cached_window_size = current_size
+
+            if self._mss_instance is None:
+                self._mss_instance = mss.mss()
+            screenshot = self._mss_instance.grab(self._cached_screenshot_region)
             screenshot = np.array(screenshot)
+            screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGRA2BGR)
             return screenshot
 
         except Exception as e:
@@ -866,7 +902,7 @@ class SecretShopRefresh:
         """
         search_start_time = time.time()
 
-        full_screenshot = process_screenshot.copy()
+        full_screenshot = process_screenshot
 
         region_offset = (0, 0)
         if search_region is not None:
@@ -890,7 +926,6 @@ class SecretShopRefresh:
         result = cv2.matchTemplate(process_screenshot, process_item, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-        # Use slightly lower threshold for mystic items as they can be harder to detect
         threshold = self.ITEM_MATCH_THRESHOLD
         if 'mystic' in item_name.lower():
             threshold = max(0.70, self.ITEM_MATCH_THRESHOLD - 0.05)
@@ -914,11 +949,15 @@ class SecretShopRefresh:
             item_h, item_w = process_item.shape[:2]
 
             if self.debug:
-                self.debug_log(f'[ITEM_SEARCH] Item found at (screen): ({self.window.left + item_x}, {self.window.top + item_y})')
+                if self._cached_window_props:
+                    win_left, win_top = self._cached_window_props[0], self._cached_window_props[1]
+                else:
+                    win_left, win_top = self.window.left, self.window.top
+                self.debug_log(f'[ITEM_SEARCH] Item found at (screen): ({win_left + item_x}, {win_top + item_y})')
                 self.debug_log(f'[ITEM_SEARCH] Item size: {item_w}x{item_h}')
 
             if self.save_screenshots:
-                fresh_screenshot = self.takeScreenshot()
+                fresh_screenshot = self.takeScreenshot(activate_window=False)
                 if fresh_screenshot is not None:
                     fresh_screenshot_gray = cv2.cvtColor(fresh_screenshot, cv2.COLOR_BGR2GRAY)
                     additional_rects = [
@@ -956,7 +995,7 @@ class SecretShopRefresh:
                     self.debug_log(f'[ITEM_SEARCH] ROI size: {roi.shape[1]}x{roi.shape[0]} (x: {roi_x_start}, y: {roi_y_start}-{roi_y_end})')
 
                 if self.save_screenshots and roi.size > 0:
-                    fresh_screenshot = self.takeScreenshot()
+                    fresh_screenshot = self.takeScreenshot(activate_window=False)
                     if fresh_screenshot is not None:
                         fresh_screenshot_gray = cv2.cvtColor(fresh_screenshot, cv2.COLOR_BGR2GRAY)
                         additional_rects = [
@@ -993,7 +1032,9 @@ class SecretShopRefresh:
                         self.debug_log(f'[BUY_BUTTON] Searching for "buy button" for item "{item_name}"')
 
                     buy_search_start = time.time()
-                    buy_btn_blurred = cv2.GaussianBlur(self.buy_btn, (3, 3), 0)
+                    if 'buy_btn' not in self._cached_blurred_buttons:
+                        self._cached_blurred_buttons['buy_btn'] = cv2.GaussianBlur(self.buy_btn, (3, 3), 0)
+                    buy_btn_blurred = self._cached_blurred_buttons['buy_btn']
                     buy_result = cv2.matchTemplate(roi_blurred, buy_btn_blurred, cv2.TM_CCOEFF_NORMED)
                     _, buy_max_val, _, buy_max_loc = cv2.minMaxLoc(buy_result)
                     buy_search_time = (time.time() - buy_search_start) * 1000
@@ -1011,17 +1052,23 @@ class SecretShopRefresh:
                         btn_h, btn_w = self.buy_btn.shape[:2]
                         buy_top_left_x = roi_x_start + buy_max_loc[0]
                         buy_top_left_y = roi_y_start + buy_max_loc[1]
-                        x = self.window.left + buy_top_left_x + btn_w // 2
-                        y = self.window.top + buy_top_left_y + btn_h // 2
+                        if self._cached_window_props:
+                            win_left, win_top = self._cached_window_props[0], self._cached_window_props[1]
+                        else:
+                            win_left, win_top = self.window.left, self.window.top
+                        x = win_left + buy_top_left_x + btn_w // 2
+                        y = win_top + buy_top_left_y + btn_h // 2
 
                         if self.debug:
-                            self.debug_log(f'[BUY_BUTTON] Found! Top-left (screen): ({self.window.left + buy_top_left_x}, {self.window.top + buy_top_left_y})')
+                            self.debug_log(f'[BUY_BUTTON] Found! Top-left (screen): ({win_left + buy_top_left_x}, {win_top + buy_top_left_y})')
                             self.debug_log(f'[BUY_BUTTON] Center (screen): ({x}, {y})')
 
                         return (x, y)
 
                 if self.sold_indicator is not None:
-                    sold_blurred = cv2.GaussianBlur(self.sold_indicator, (3, 3), 0)
+                    if 'sold_indicator' not in self._cached_blurred_buttons:
+                        self._cached_blurred_buttons['sold_indicator'] = cv2.GaussianBlur(self.sold_indicator, (3, 3), 0)
+                    sold_blurred = self._cached_blurred_buttons['sold_indicator']
                     sold_result = cv2.matchTemplate(roi_blurred, sold_blurred, cv2.TM_CCOEFF_NORMED)
                     _, sold_max_val, _, _ = cv2.minMaxLoc(sold_result)
                     if sold_max_val >= self.SOLD_INDICATOR_THRESHOLD:
@@ -1069,7 +1116,11 @@ class SecretShopRefresh:
                 region_offset = (x, y)
                 process_screenshot = process_screenshot[y:y+h, x:x+w]
                 if self.debug:
-                    self.debug_log(f'[BUTTON_SEARCH] Window size: {self.window.width}x{self.window.height}')
+                    if self._cached_window_props:
+                        win_width, win_height = self._cached_window_props[2], self._cached_window_props[3]
+                    else:
+                        win_width, win_height = self.window.width, self.window.height
+                    self.debug_log(f'[BUTTON_SEARCH] Window size: {win_width}x{win_height}')
                     self.debug_log(f'[BUTTON_SEARCH] Limited search to region: x={x}, y={y}, w={w}, h={h}')
 
         if self.save_screenshots:
@@ -1090,9 +1141,12 @@ class SecretShopRefresh:
                                         f'search_{button_name.replace(" ", "_").replace("(", "").replace(")", "")}', color)
 
         process_screenshot = cv2.GaussianBlur(process_screenshot, (3, 3), 0)
-        button_image = cv2.GaussianBlur(button_image, (3, 3), 0)
 
-        result = cv2.matchTemplate(process_screenshot, button_image, cv2.TM_CCOEFF_NORMED)
+        if button_name not in self._cached_blurred_buttons:
+            self._cached_blurred_buttons[button_name] = cv2.GaussianBlur(button_image, (3, 3), 0)
+        button_image_blurred = self._cached_blurred_buttons[button_name]
+
+        result = cv2.matchTemplate(process_screenshot, button_image_blurred, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
         search_time = (time.time() - search_start_time) * 1000
@@ -1104,7 +1158,7 @@ class SecretShopRefresh:
             self.debug_log(f'[BUTTON_SEARCH] Search time: {search_time:.2f}ms')
 
         if max_val >= threshold:
-            btn_h, btn_w = button_image.shape[:2]
+            btn_h, btn_w = button_image_blurred.shape[:2]
 
             top_left_x = max_loc[0] + region_offset[0]
             top_left_y = max_loc[1] + region_offset[1]
@@ -1112,12 +1166,16 @@ class SecretShopRefresh:
             center_x_in_area = top_left_x + btn_w // 2
             center_y_in_area = top_left_y + btn_h // 2
 
-            center_x = self.window.left + center_x_in_area
-            center_y = self.window.top + center_y_in_area
+            if self._cached_window_props:
+                win_left, win_top = self._cached_window_props[0], self._cached_window_props[1]
+            else:
+                win_left, win_top = self.window.left, self.window.top
+            center_x = win_left + center_x_in_area
+            center_y = win_top + center_y_in_area
 
             if self.debug:
                 self.debug_log(f'[BUTTON_SEARCH] Button size: {btn_w}x{btn_h}')
-                self.debug_log(f'[BUTTON_SEARCH] Top-left (screen): ({self.window.left + top_left_x}, {self.window.top + top_left_y})')
+                self.debug_log(f'[BUTTON_SEARCH] Top-left (screen): ({win_left + top_left_x}, {win_top + top_left_y})')
                 self.debug_log(f'[BUTTON_SEARCH] Center (screen): ({center_x}, {center_y})')
 
             return (center_x, center_y)
@@ -1130,7 +1188,7 @@ class SecretShopRefresh:
             if not self.loop_active:
                 return False
 
-            screenshot = self.takeScreenshot()
+            screenshot = self.takeScreenshot(activate_window=(attempt == 0))
             if screenshot is None:
                 continue
             process_screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
@@ -1154,8 +1212,13 @@ class SecretShopRefresh:
         if fallback_x_ratio is not None and fallback_y_ratio is not None:
             if not self.loop_active:
                 return False
-            x = self.window.left + self.window.width * fallback_x_ratio
-            y = self.window.top + self.window.height * fallback_y_ratio
+            if self._cached_window_props:
+                win_left, win_top, win_width, win_height = self._cached_window_props
+            else:
+                win_left, win_top = self.window.left, self.window.top
+                win_width, win_height = self.window.width, self.window.height
+            x = win_left + win_width * fallback_x_ratio
+            y = win_top + win_height * fallback_y_ratio
             offset_x, offset_y = self.randomClickOffset()
             x += offset_x
             y += offset_y
@@ -1323,7 +1386,7 @@ class SecretShopRefresh:
             return True
         time.sleep(0.5)
 
-        screenshot = self.takeScreenshot()
+        screenshot = self.takeScreenshot(activate_window=False)
         if screenshot is None:
             return True
 
@@ -1343,8 +1406,13 @@ class SecretShopRefresh:
             return True
 
     def scrollShop(self):
-        x = self.window.left + self.window.width * 0.58
-        y = self.window.top + self.window.height * 0.65
+        if self._cached_window_props:
+            win_left, win_top, win_width, win_height = self._cached_window_props
+        else:
+            win_left, win_top = self.window.left, self.window.top
+            win_width, win_height = self.window.width, self.window.height
+        x = win_left + win_width * 0.58
+        y = win_top + win_height * 0.65
 
         base_scroll = self.SCROLL_RATIO
         extra_scroll = random.uniform(self.SCROLL_RANDOM_EXTRA_MIN, self.SCROLL_RANDOM_EXTRA_MAX)
@@ -1357,7 +1425,7 @@ class SecretShopRefresh:
         time.sleep(0.1)
         pyautogui.mouseDown(button='left')
         time.sleep(0.1)
-        pyautogui.moveTo(x, y - self.window.height * total_scroll)
+        pyautogui.moveTo(x, y - win_height * total_scroll)
         pyautogui.mouseUp(button='left')
 
 class AppConfig():
@@ -1660,7 +1728,7 @@ class AutoRefreshGUI:
                     return False
                 else:
                     return value.isdigit()
-            except:
+            except ValueError:
                 return False
 
         valid_int_reg = self.root.register(validateInt)
@@ -1775,8 +1843,8 @@ if __name__ == '__main__':
             custom_width = int(parts[0])
             custom_height = int(parts[1])
             print(f'[CONFIG] Custom reference size: {custom_width}x{custom_height}')
-        except:
-            print(f'[ERROR] Invalid size format: {args.size}. Use format: --size=WIDTHxHEIGHT')
+        except (ValueError, IndexError) as e:
+            print(f'[ERROR] Invalid size format: {args.size}. Use format: --size=WIDTHxHEIGHT. Error: {e}')
             exit(1)
 
     if args.info:
