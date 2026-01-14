@@ -1,0 +1,141 @@
+{
+    "timing": {
+        "mouse_sleep": 0.15,
+        "screenshot_sleep": 0.15
+    },
+    "anti_detection": {
+        "click_offset_max": 10,
+        "double_click_chance": 0.3,
+        "scroll_random_extra_min": 0.0,
+        "scroll_random_extra_max": 0.15
+    },
+    "scrolling": {
+        "scroll_ratio": 0.277,
+        "scroll_start_x_ratio": 0.58,
+        "scroll_start_y_ratio": 0.65
+    },
+    "thresholds": {
+        "item_match": 0.75,
+        "button_match": 0.75,
+        "shop_check": 0.7,
+        "buy_button": 0.7,
+        "sold_indicator": 0.7
+    },
+    "reference": {
+        "width": 3840,
+        "height": 1600
+    },
+    "search_regions_21_9": {
+        "refresh_button": {
+            "width": 900,
+            "height": 275,
+            "margin_left": 540
+        },
+        "confirm_button": {
+            "width": 500,
+            "height": 500,
+            "margin_bottom": 225,
+            "margin_right": 250
+        },
+        "items_search": {
+            "x": 1680,
+            "width": 300
+        },
+        "buy_button": {
+            "margin_x": 1139,
+            "width": 450,
+            "height": 250
+        },
+        "confirm_buy_button": {
+            "width": 600,
+            "height": 230,
+            "margin_bottom": 350,
+            "offset_right": 15
+        }
+    },
+    "search_regions_16_9": {
+        "refresh_button": {
+            "width": 580,
+            "height": 160,
+            "margin_left": 0
+        },
+        "confirm_button": {
+            "width": 400,
+            "height": 300,
+            "margin_bottom": 160,
+            "margin_right": 0
+        },
+        "items_search": {
+            "x": 810,
+            "width": 190
+        },
+        "buy_button": {
+            "margin_x": 740,
+            "width": 300,
+            "height": 180
+        },
+        "confirm_buy_button": {
+            "width": 440,
+            "height": 150,
+            "margin_bottom": 240,
+            "offset_right": 15
+        }
+    },
+    "search_regions_other": {
+        "refresh_button": {
+            "width": 900,
+            "height": 275,
+            "margin_left": 540
+        },
+        "confirm_button": {
+            "width": 450,
+            "height": 500,
+            "margin_bottom": 275,
+            "margin_right": 250
+        },
+        "items_search": {
+            "x": 1680,
+            "width": 300
+        },
+        "buy_button": {
+            "margin_x": 1100,
+            "width": 450,
+            "height": 250
+        },
+        "confirm_buy_button": {
+            "width": 650,
+            "height": 200,
+            "margin_bottom": 375,
+            "offset_right": 15
+        }
+    },
+    "recognized_titles": [
+        "Epic Seven",
+        "BlueStacks App Player",
+        "LDPlayer",
+        "MuMu Player 12",
+        "에픽세븐",
+        "Google Play Games on PC Emulator"
+    ],
+    "shop_items": [
+        {
+            "image": "item_covenant.png",
+            "name": "Covenant bookmark",
+            "price": 184000
+        },
+        {
+            "image": "item_mystic.png",
+            "name": "Mystic medal",
+            "price": 280000
+        },
+        {
+            "image": "item_friendship.png",
+            "name": "Friendship bookmark",
+            "price": 18000
+        }
+    ],
+    "debug": {
+        "enabled": false,
+        "save_screenshots": false
+    }
+}

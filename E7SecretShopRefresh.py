@@ -19,6 +19,8 @@ import mss
 import random
 import logging
 
+from config import get_config, get_search_regions_for_aspect, save_default_config
+
 logger = logging.getLogger(__name__)
 def get_asset_path(relative_path):
     """Get the correct path for assets, works for both dev and PyInstaller bundle"""
@@ -67,10 +69,7 @@ class RefreshStatistic:
         return [shop_item.count for shop_item in self.items.values()]
 
     def getTotalCost(self):
-        total = 0
-        for shop_item in self.items.values():
-            total += shop_item.price * shop_item.count
-        return total
+        return sum(item.price * item.count for item in self.items.values())
 
     def incrementRefreshCount(self):
         self.refresh_count += 1
@@ -112,6 +111,8 @@ class SecretShopRefresh:
     SCROLL_RANDOM_EXTRA_MAX = 0.15
 
     SCROLL_RATIO = 0.277
+    SCROLL_START_X_RATIO = 0.58
+    SCROLL_START_Y_RATIO = 0.65
     ITEM_MATCH_THRESHOLD = 0.75
     BUTTON_MATCH_THRESHOLD = 0.75
     SHOP_CHECK_THRESHOLD = 0.7
@@ -119,6 +120,9 @@ class SecretShopRefresh:
     SOLD_INDICATOR_THRESHOLD = 0.7
 
     def __init__(self, title_name: str, callback = None, tk_instance: tk = None, budget: int = None, allow_move: bool = False, debug: bool = False, join_thread: bool = False, custom_size: tuple = None, save_screenshots: bool = False):
+        self._config = get_config()
+        self._apply_config()
+
         self.debug = debug
         self.save_screenshots = save_screenshots
         self.debug_log_file = None
@@ -167,6 +171,43 @@ class SecretShopRefresh:
         self._cached_window_props = None
         self._cached_screenshot_region = None
         self._mss_instance = None
+
+    def _getWindowProps(self):
+        """Get cached window properties (left, top, width, height)"""
+        current_pos_size = (self.window.left, self.window.top, self.window.width, self.window.height)
+        if self._cached_window_props and self._cached_window_props == current_pos_size:
+            return self._cached_window_props
+        self._cached_window_props = current_pos_size
+        return (self.window.left, self.window.top, self.window.width, self.window.height)
+    def _apply_config(self):
+        """Apply configuration values from config.json (if exists) to instance variables"""
+        cfg = self._config
+
+        timing = cfg.get('timing', {})
+        self.MOUSE_SLEEP = timing.get('mouse_sleep', self.MOUSE_SLEEP)
+        self.SCREENSHOT_SLEEP = timing.get('screenshot_sleep', self.SCREENSHOT_SLEEP)
+
+        anti_det = cfg.get('anti_detection', {})
+        self.CLICK_OFFSET_MAX = anti_det.get('click_offset_max', self.CLICK_OFFSET_MAX)
+        self.DOUBLE_CLICK_CHANCE = anti_det.get('double_click_chance', self.DOUBLE_CLICK_CHANCE)
+        self.SCROLL_RANDOM_EXTRA_MIN = anti_det.get('scroll_random_extra_min', self.SCROLL_RANDOM_EXTRA_MIN)
+        self.SCROLL_RANDOM_EXTRA_MAX = anti_det.get('scroll_random_extra_max', self.SCROLL_RANDOM_EXTRA_MAX)
+
+        scrolling = cfg.get('scrolling', {})
+        self.SCROLL_RATIO = scrolling.get('scroll_ratio', self.SCROLL_RATIO)
+        self.SCROLL_START_X_RATIO = scrolling.get('scroll_start_x_ratio', self.SCROLL_START_X_RATIO)
+        self.SCROLL_START_Y_RATIO = scrolling.get('scroll_start_y_ratio', self.SCROLL_START_Y_RATIO)
+
+        thresholds = cfg.get('thresholds', {})
+        self.ITEM_MATCH_THRESHOLD = thresholds.get('item_match', self.ITEM_MATCH_THRESHOLD)
+        self.BUTTON_MATCH_THRESHOLD = thresholds.get('button_match', self.BUTTON_MATCH_THRESHOLD)
+        self.SHOP_CHECK_THRESHOLD = thresholds.get('shop_check', self.SHOP_CHECK_THRESHOLD)
+        self.BUY_BUTTON_THRESHOLD = thresholds.get('buy_button', self.BUY_BUTTON_THRESHOLD)
+        self.SOLD_INDICATOR_THRESHOLD = thresholds.get('sold_indicator', self.SOLD_INDICATOR_THRESHOLD)
+
+        reference = cfg.get('reference', {})
+        self.REFERENCE_WIDTH = reference.get('width', self.REFERENCE_WIDTH)
+        self.REFERENCE_HEIGHT = reference.get('height', self.REFERENCE_HEIGHT)
 
     def debug_log(self, message):
         """Write debug message to both console and debug.log file"""
@@ -316,51 +357,33 @@ class SecretShopRefresh:
             self.debug_log(f'[SEARCH_REGIONS] Aspect ratio: {aspect_ratio}, using reference: {ref_width}x{ref_height}')
             self.debug_log(f'[SEARCH_REGIONS] Window: {self.window.width}x{self.window.height}, scales: width={width_scale:.4f}, height={height_scale:.4f}')
 
-        if aspect_ratio == '21:9':
-            refresh_w_ref = 900
-            refresh_h_ref = 275
-            refresh_margin_left_ref = 540
-            confirm_w_ref = 500
-            confirm_h_ref = 500
-            confirm_margin_bottom_ref = 225
-            items_x_ref = 1680
-            items_w_ref = 300
-            buy_margin_x_ref = 1139
-            buy_w_ref = 450
-            buy_h_ref = 250
-            confirm_buy_w_ref = 600
-            confirm_buy_h_ref = 230
-            confirm_buy_margin_bottom_ref = 350
-        elif aspect_ratio == '16:9':
-            refresh_w_ref = 580
-            refresh_h_ref = 160
-            refresh_margin_left_ref = 0
-            confirm_w_ref = 400
-            confirm_h_ref = 300
-            confirm_margin_bottom_ref = 160
-            items_x_ref = 810
-            items_w_ref = 190
-            buy_margin_x_ref = 740
-            buy_w_ref = 300
-            buy_h_ref = 180
-            confirm_buy_w_ref = 440
-            confirm_buy_h_ref = 150
-            confirm_buy_margin_bottom_ref = 240
-        else:
-            refresh_w_ref = 900
-            refresh_h_ref = 275
-            refresh_margin_left_ref = 540
-            confirm_w_ref = 450
-            confirm_h_ref = 500
-            confirm_margin_bottom_ref = 275
-            items_x_ref = 1680
-            items_w_ref = 300
-            buy_margin_x_ref = 1100
-            buy_w_ref = 450
-            buy_h_ref = 250
-            confirm_buy_w_ref = 650
-            confirm_buy_h_ref = 200
-            confirm_buy_margin_bottom_ref = 375
+        sr_cfg = get_search_regions_for_aspect(self._config, aspect_ratio)
+
+        refresh_cfg = sr_cfg.get('refresh_button', {})
+        refresh_w_ref = refresh_cfg.get('width', 900)
+        refresh_h_ref = refresh_cfg.get('height', 275)
+        refresh_margin_left_ref = refresh_cfg.get('margin_left', 540)
+
+        confirm_cfg = sr_cfg.get('confirm_button', {})
+        confirm_w_ref = confirm_cfg.get('width', 500)
+        confirm_h_ref = confirm_cfg.get('height', 500)
+        confirm_margin_bottom_ref = confirm_cfg.get('margin_bottom', 225)
+        confirm_margin_right_ref = confirm_cfg.get('margin_right', 250 if aspect_ratio != '16:9' else 0)
+
+        items_cfg = sr_cfg.get('items_search', {})
+        items_x_ref = items_cfg.get('x', 1680)
+        items_w_ref = items_cfg.get('width', 300)
+
+        buy_cfg = sr_cfg.get('buy_button', {})
+        buy_margin_x_ref = buy_cfg.get('margin_x', 1139)
+        buy_w_ref = buy_cfg.get('width', 450)
+        buy_h_ref = buy_cfg.get('height', 250)
+
+        confirm_buy_cfg = sr_cfg.get('confirm_buy_button', {})
+        confirm_buy_w_ref = confirm_buy_cfg.get('width', 600)
+        confirm_buy_h_ref = confirm_buy_cfg.get('height', 230)
+        confirm_buy_margin_bottom_ref = confirm_buy_cfg.get('margin_bottom', 350)
+        confirm_buy_offset_right_ref = confirm_buy_cfg.get('offset_right', 15)
 
         regions = {}
 
@@ -371,7 +394,6 @@ class SecretShopRefresh:
 
         confirm_w = int(confirm_w_ref * width_scale)
         confirm_h = int(confirm_h_ref * height_scale)
-        confirm_margin_right_ref = 0 if aspect_ratio == '16:9' else 250
         confirm_margin_right = int(confirm_margin_right_ref * width_scale)
         confirm_x = self.window.width // 2 + confirm_margin_right
         confirm_y = self.window.height - int(confirm_margin_bottom_ref * height_scale) - confirm_h
@@ -391,7 +413,6 @@ class SecretShopRefresh:
         confirm_buy_w = int(confirm_buy_w_ref * width_scale)
         confirm_buy_h = int(confirm_buy_h_ref * height_scale)
         confirm_buy_margin_bottom = int(confirm_buy_margin_bottom_ref * height_scale)
-        confirm_buy_offset_right_ref = 15
         confirm_buy_offset_right = int(confirm_buy_offset_right_ref * width_scale)
         confirm_buy_x = self.window.width // 2 + confirm_buy_offset_right
         confirm_buy_y = self.window.height - confirm_buy_margin_bottom - confirm_buy_h
@@ -504,7 +525,10 @@ class SecretShopRefresh:
 
     def checkKeyPress(self):
         while self.loop_active and not self.loop_finish:
-            self.loop_active = not keyboard.is_pressed('esc')
+            if keyboard.is_pressed('esc'):
+                self.loop_active = False
+                break
+            time.sleep(0.01)
         self.loop_active = False
         print('Terminating shop refresh ...')
 
@@ -955,10 +979,7 @@ class SecretShopRefresh:
             item_h, item_w = process_item_blurred.shape[:2]
 
             if self.debug:
-                if self._cached_window_props:
-                    win_left, win_top = self._cached_window_props[0], self._cached_window_props[1]
-                else:
-                    win_left, win_top = self.window.left, self.window.top
+                win_left, win_top, _, _ = self._getWindowProps()
                 self.debug_log(f'[ITEM_SEARCH] Item found at (screen): ({win_left + item_x}, {win_top + item_y})')
                 self.debug_log(f'[ITEM_SEARCH] Item size: {item_w}x{item_h}')
 
@@ -1058,10 +1079,7 @@ class SecretShopRefresh:
                         btn_h, btn_w = self.buy_btn.shape[:2]
                         buy_top_left_x = roi_x_start + buy_max_loc[0]
                         buy_top_left_y = roi_y_start + buy_max_loc[1]
-                        if self._cached_window_props:
-                            win_left, win_top = self._cached_window_props[0], self._cached_window_props[1]
-                        else:
-                            win_left, win_top = self.window.left, self.window.top
+                        win_left, win_top, _, _ = self._getWindowProps()
                         x = win_left + buy_top_left_x + btn_w // 2
                         y = win_top + buy_top_left_y + btn_h // 2
 
@@ -1085,7 +1103,7 @@ class SecretShopRefresh:
             return None
         return None
 
-    def findButtonPosition(self, process_screenshot, button_image, threshold=0.8, search_region=None, region_offset=(0, 0), button_name="button"):
+    def findButtonPosition(self, process_screenshot, button_image, threshold=0.8, search_region=None, button_name="button"):
         """Find a button in the screenshot and return its center position.
 
         Args:
@@ -1122,10 +1140,7 @@ class SecretShopRefresh:
                 region_offset = (x, y)
                 process_screenshot = process_screenshot[y:y+h, x:x+w]
                 if self.debug:
-                    if self._cached_window_props:
-                        win_width, win_height = self._cached_window_props[2], self._cached_window_props[3]
-                    else:
-                        win_width, win_height = self.window.width, self.window.height
+                    _, _, win_width, win_height = self._getWindowProps()
                     self.debug_log(f'[BUTTON_SEARCH] Window size: {win_width}x{win_height}')
                     self.debug_log(f'[BUTTON_SEARCH] Limited search to region: x={x}, y={y}, w={w}, h={h}')
 
@@ -1172,10 +1187,7 @@ class SecretShopRefresh:
             center_x_in_area = top_left_x + btn_w // 2
             center_y_in_area = top_left_y + btn_h // 2
 
-            if self._cached_window_props:
-                win_left, win_top = self._cached_window_props[0], self._cached_window_props[1]
-            else:
-                win_left, win_top = self.window.left, self.window.top
+            win_left, win_top, _, _ = self._getWindowProps()
             center_x = win_left + center_x_in_area
             center_y = win_top + center_y_in_area
 
@@ -1218,11 +1230,7 @@ class SecretShopRefresh:
         if fallback_x_ratio is not None and fallback_y_ratio is not None:
             if not self.loop_active:
                 return False
-            if self._cached_window_props:
-                win_left, win_top, win_width, win_height = self._cached_window_props
-            else:
-                win_left, win_top = self.window.left, self.window.top
-                win_width, win_height = self.window.width, self.window.height
+            win_left, win_top, win_width, win_height = self._getWindowProps()
             x = win_left + win_width * fallback_x_ratio
             y = win_top + win_height * fallback_y_ratio
             offset_x, offset_y = self.randomClickOffset()
@@ -1263,12 +1271,8 @@ class SecretShopRefresh:
     def clickConfirmBuy(self):
         if not self.loop_active:
             return
-
         if self.debug:
             self.debug_log('[DEBUG] Clicking confirm buy button')
-
-        if not self.loop_active:
-            return
 
         confirm_buy_region = self.getSearchRegions()['confirm_buy_btn']
         if self.debug:
@@ -1299,9 +1303,6 @@ class SecretShopRefresh:
         if self.debug:
             self.debug_log('[DEBUG] Clicking refresh button')
 
-        if not self.loop_active:
-            return False
-
         refresh_region = self.getSearchRegions()['refresh_btn']
         self.clickButtonByImage(
             self.refresh_btn,
@@ -1328,9 +1329,6 @@ class SecretShopRefresh:
         if self.debug:
             self.debug_log('[DEBUG] Clicking confirm refresh button')
 
-        if not self.loop_active:
-            return False
-
         confirm_region = self.getSearchRegions()['confirm_btn']
         self.clickButtonByImage(
             self.confirm_btn,
@@ -1345,8 +1343,6 @@ class SecretShopRefresh:
             return False
         time.sleep(self.SCREENSHOT_SLEEP)
 
-        if not self.loop_active:
-            return False
         if not self._checkOutOfSkystones():
             return False
 
@@ -1412,13 +1408,9 @@ class SecretShopRefresh:
             return True
 
     def scrollShop(self):
-        if self._cached_window_props:
-            win_left, win_top, win_width, win_height = self._cached_window_props
-        else:
-            win_left, win_top = self.window.left, self.window.top
-            win_width, win_height = self.window.width, self.window.height
-        x = win_left + win_width * 0.58
-        y = win_top + win_height * 0.65
+        win_left, win_top, win_width, win_height = self._getWindowProps()
+        x = win_left + win_width * self.SCROLL_START_X_RATIO
+        y = win_top + win_height * self.SCROLL_START_Y_RATIO
 
         base_scroll = self.SCROLL_RATIO
         extra_scroll = random.uniform(self.SCROLL_RANDOM_EXTRA_MIN, self.SCROLL_RANDOM_EXTRA_MAX)
@@ -1436,16 +1428,26 @@ class SecretShopRefresh:
 
 class AppConfig():
     def __init__(self):
-        self.RECOGNIZE_TITLES = {'Epic Seven',
-                                 'BlueStacks App Player',
-                                 'LDPlayer',
-                                 'MuMu Player 12',
-                                 '에픽세븐',
-                                 'Google Play Games on PC Emulator'}
-        self.ALL_ITEMS = [['item_covenant.png', 'Covenant bookmark', 184000],
-                          ['item_mystic.png', 'Mystic medal', 280000],
-                          ['item_friendship.png', 'Friendship bookmark', 18000]]
-        self.DEBUG = False
+        self._config = get_config()
+
+        recognized = self._config.get('recognized_titles', [
+            'Epic Seven',
+            'BlueStacks App Player',
+            'LDPlayer',
+            'MuMu Player 12',
+            '에픽세븐',
+            'Google Play Games on PC Emulator'
+        ])
+        self.RECOGNIZE_TITLES = set(recognized)
+
+        self.ALL_ITEMS = self._config.get('shop_items', [
+            {"image": "item_covenant.png", "name": "Covenant bookmark", "price": 184000},
+            {"image": "item_mystic.png", "name": "Mystic medal", "price": 280000},
+            {"image": "item_friendship.png", "name": "Friendship bookmark", "price": 18000}
+        ])
+
+        debug_cfg = self._config.get('debug', {})
+        self.DEBUG = debug_cfg.get('enabled', False)
 
 class AutoRefreshGUI:
     def __init__(self, debug_mode=False, custom_size=None, save_screenshots=False):
@@ -1573,10 +1575,10 @@ class AutoRefreshGUI:
         items_frame = tk.Frame(items_inner, bg=self.bg_secondary)
 
         for index, item in enumerate(self.app_config.ALL_ITEMS):
-            img = Image.open(get_asset_path(os.path.join('assets', item[0])))
+            img = Image.open(get_asset_path(os.path.join('assets', item["image"])))
             img = img.resize(GUI_ITEM_SIZE, Image.Resampling.LANCZOS)
             self.keep_image_open.append(ImageTk.PhotoImage(img))
-            self.packItemHorizontal(items_frame, index, item[0])
+            self.packItemHorizontal(items_frame, index, item["image"])
 
         items_frame.pack()
 
@@ -1814,8 +1816,8 @@ class AutoRefreshGUI:
             self.ssr.allow_move = True
 
         for item in self.app_config.ALL_ITEMS:
-            if item[0] not in self.ignore_path:
-                self.ssr.addShopItem(path=item[0], name=item[1], price=item[2])
+            if item["image"] not in self.ignore_path:
+                self.ssr.addShopItem(path=item["image"], name=item["name"], price=item["price"])
 
         if self.limit_spend_entry.get() != '':
             self.ssr.budget = int(self.limit_spend_entry.get())
@@ -1840,7 +1842,14 @@ if __name__ == '__main__':
     parser.add_argument('--screenshot', action='store_true', help='Save debug screenshots of search areas (requires --debug)')
     parser.add_argument('--size', type=str, help='Custom reference size for assets (e.g., --size=1920x1080)')
     parser.add_argument('--info', action='store_true', help='Show window size and scaling info, then exit')
+    parser.add_argument('--generate-config', action='store_true', help='Generate a config.example.json with all default values')
     args = parser.parse_args()
+
+    if args.generate_config:
+        save_default_config('config.example.json')
+        print('\nYou can copy config.example.json to config.json and customize the values.')
+        print('Only include the values you want to change - the app uses defaults for missing values.')
+        exit(0)
 
     custom_width, custom_height = None, None
     if args.size:
