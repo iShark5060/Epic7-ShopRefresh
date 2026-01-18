@@ -92,10 +92,9 @@ class RefreshStatistic:
         if not os.path.exists(res_folder):
             os.makedirs(res_folder)
 
-        gen_path = 'refreshAttempt'
-        for name in self.getName():
-            gen_path += name[:4]
-        gen_path += '.csv'
+        # Cache getName() result to avoid calling it twice
+        item_names = self.getName()
+        gen_path = 'refreshAttempt' + ''.join(name[:4] for name in item_names) + '.csv'
 
         path = os.path.join(res_folder, gen_path)
 
@@ -103,7 +102,7 @@ class RefreshStatistic:
             with open(path, 'w', newline='') as file:
                 writer = csv.writer(file)
                 column_name = ['Time', 'Duration', 'Refresh count', 'Skystone spent', 'Gold spent']
-                column_name.extend(self.getName())
+                column_name.extend(item_names)
                 writer.writerow(column_name)
         with open(path, 'a', newline='') as file:
             writer = csv.writer(file)
@@ -192,7 +191,7 @@ class SecretShopRefresh:
         if self._cached_window_props and self._cached_window_props == current_pos_size:
             return self._cached_window_props
         self._cached_window_props = current_pos_size
-        return (self.window.left, self.window.top, self.window.width, self.window.height)
+        return self._cached_window_props
     def _apply_config(self):
         """Apply configuration values from config.json (if exists) to instance variables"""
         cfg = self._config

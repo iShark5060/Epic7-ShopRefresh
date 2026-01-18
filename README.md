@@ -2,7 +2,7 @@
 
 An automated tool for refreshing the Secret Shop in Epic Seven, with support for any window resolution and built-in anti-detection features.
 
-![Demo](https://github.com/sya1999/Epic-Seven-Secret-Shop-Refresh/blob/main/assets/E7.gif)
+![Demo](https://github.com/iShark5060/Epic7-ShopRefresh/blob/main/assets/E7.gif)
 
 ## Credits
 
@@ -20,7 +20,7 @@ This project is a fork of the original Epic Seven Secret Shop Refresh tool. Huge
 - **Multiple Item Support** - Detects and purchases all desired items in a single view
 - **Safety Checks** - Pauses if you navigate away from the shop
 - **Out of Skystone Check** - Stops script if the user is out of skystones
-- **Live Shopping Display** - Shows items purchased and refresh counter
+- **Live Shopping Display** - Real-time overlay showing items purchased, refresh counter, and elapsed time
 - **Debug Mode** - Detailed output and screenshot saving for troubleshooting
 - **Robust Error Handling** - Clear error messages for invalid input formats
 
@@ -84,7 +84,9 @@ python .\\E7SecretShopRefresh.py --debug --screenshot --size=1920x1080
 | `--info` | Display available windows and scaling information, then exit |
 | `--size=WIDTHxHEIGHT` | Specify custom reference size for assets (e.g., `--size=1920x1080`) |
 
-**Note:** If an invalid format is provided to `--size`, the program will display a clear error message and exit.
+**Note:**
+- If an invalid format is provided to `--size`, the program will display a clear error message and exit.
+- The `--screenshot` option works best with `--debug` enabled to see when and where screenshots are saved.
 
 ## GUI Settings
 
@@ -158,8 +160,11 @@ Purchase history is automatically saved to the `ShopRefreshHistory` folder as CS
 - Timestamp
 - Duration
 - Refresh count
-- Items purchased (Covenant, Mystic, Friendship bookmarks)
-- Total cost
+- Skystone spent (calculated as refresh_count × 3)
+- Gold spent (total cost of all purchased items)
+- Items purchased (count for each bookmark type: Covenant, Mystic, Friendship)
+
+CSV files are named `refreshAttempt[Cov][Mys][Frie].csv` based on which items you're tracking. Files are created automatically when you start shopping.
 
 ## ToDo
 
