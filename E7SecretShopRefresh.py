@@ -74,6 +74,19 @@ class RefreshStatistic:
     def incrementRefreshCount(self):
         self.refresh_count += 1
 
+    def getElapsedTime(self):
+        """Get the elapsed time since start_time as a formatted string (HH:MM:SS)"""
+        elapsed = datetime.now() - self.start_time
+        total_seconds = int(elapsed.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    def getElapsedTimeDelta(self):
+        """Get the elapsed time as a timedelta object"""
+        return datetime.now() - self.start_time
+
     def writeToCSV(self):
         res_folder = 'ShopRefreshHistory'
         if not os.path.exists(res_folder):
@@ -113,6 +126,7 @@ class SecretShopRefresh:
     SCROLL_RATIO = 0.277
     SCROLL_START_X_RATIO = 0.58
     SCROLL_START_Y_RATIO = 0.65
+    SCROLL_DRAG_DELAY = 0.15
     ITEM_MATCH_THRESHOLD = 0.75
     BUTTON_MATCH_THRESHOLD = 0.75
     SHOP_CHECK_THRESHOLD = 0.7
@@ -197,6 +211,7 @@ class SecretShopRefresh:
         self.SCROLL_RATIO = scrolling.get('scroll_ratio', self.SCROLL_RATIO)
         self.SCROLL_START_X_RATIO = scrolling.get('scroll_start_x_ratio', self.SCROLL_START_X_RATIO)
         self.SCROLL_START_Y_RATIO = scrolling.get('scroll_start_y_ratio', self.SCROLL_START_Y_RATIO)
+        self.SCROLL_DRAG_DELAY = scrolling.get('scroll_drag_delay', self.SCROLL_DRAG_DELAY)
 
         thresholds = cfg.get('thresholds', {})
         self.ITEM_MATCH_THRESHOLD = thresholds.get('item_match', self.ITEM_MATCH_THRESHOLD)
@@ -574,7 +589,7 @@ class SecretShopRefresh:
 
         summary = tk.Toplevel(self.tk_instance)
         summary.title('Shopping Summary')
-        summary.geometry('400x500')
+        summary.geometry('400x725')
         summary.iconbitmap(get_asset_path(os.path.join('assets', 'icon.ico')))
         summary.config(bg=bg_color)
 
@@ -594,6 +609,14 @@ class SecretShopRefresh:
                 font=('Segoe UI', 10)).pack(anchor='w')
         tk.Label(refresh_frame, text=str(self.rs_instance.refresh_count), bg=bg_secondary,
                 fg='#88FF88', font=('Segoe UI', 24, 'bold')).pack(anchor='w', pady=(5, 0))
+
+        time_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
+        time_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+        tk.Label(time_frame, text='Total Time', bg=bg_secondary, fg=fg_secondary,
+                font=('Segoe UI', 10)).pack(anchor='w')
+        elapsed_time = self.rs_instance.getElapsedTime()
+        tk.Label(time_frame, text=elapsed_time, bg=bg_secondary,
+                fg='#88CCFF', font=('Segoe UI', 24, 'bold')).pack(anchor='w', pady=(5, 0))
 
         items_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
         items_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
@@ -660,7 +683,7 @@ class SecretShopRefresh:
             self._cleanupAndExit()
             return
 
-        hint, mini_labels, refresh_label = None, None, None
+        hint, mini_labels, refresh_label, time_label = None, None, None, None
         if self.tk_instance:
             selected_path = self.rs_instance.getPath()
             mini_images = []
@@ -669,7 +692,7 @@ class SecretShopRefresh:
                 img = img.resize((45, 45))
                 img = ImageTk.PhotoImage(img)
                 mini_images.append(img)
-            hint, mini_labels, refresh_label = self.showMiniDisplays(mini_images)
+            hint, mini_labels, refresh_label, time_label = self.showMiniDisplays(mini_images)
 
         def updateMiniDisplay():
             if mini_labels:
@@ -686,6 +709,25 @@ class SecretShopRefresh:
                 refresh_label.config(text=f'Refreshes: {current} / {max_refreshes}\n({remaining} left)')
             else:
                 refresh_label.config(text=f'Refreshes: {current}')
+
+        def updateTimer():
+            if time_label is None:
+                return
+            try:
+                elapsed_time = self.rs_instance.getElapsedTime()
+                time_label.config(text=f'Time: {elapsed_time}')
+            except tk.TclError:
+                return
+            except AttributeError:
+                logger.debug('updateTimer: AttributeError (rs_instance or widget may be None/destroyed)', exc_info=True)
+                return
+
+        if hint and time_label:
+            def scheduleTimerUpdate():
+                if hint and time_label and hint.winfo_exists():
+                    updateTimer()
+                    hint.after(1000, scheduleTimerUpdate)
+            hint.after(1000, scheduleTimerUpdate)
 
         time.sleep(self.MOUSE_SLEEP)
 
@@ -775,9 +817,9 @@ class SecretShopRefresh:
         fg_color = '#dddddd'
 
         if self.tk_instance is None:
-            return None, None, None
+            return None, None, None, None
         hint = tk.Toplevel(self.tk_instance)
-        hint.geometry(r'220x250+%d+%d' % (self.window.left, self.window.top))
+        hint.geometry(r'220x300+%d+%d' % (self.window.left, self.window.top))
         hint.title('Shopping')
         hint.iconbitmap(get_asset_path(os.path.join('assets', 'icon.ico')))
         hint.attributes('-topmost', True)
@@ -806,7 +848,16 @@ class SecretShopRefresh:
         )
         refresh_label.pack(pady=10)
 
-        return hint, mini_labels, refresh_label
+        time_label = tk.Label(
+            master=hint,
+            text='Time: 00:00:00',
+            bg=bg_color,
+            fg='#88CCFF',
+            font=('Helvetica', 10, 'bold')
+        )
+        time_label.pack(pady=(0, 10))
+
+        return hint, mini_labels, refresh_label, time_label
 
     def addShopItem(self, path: str, name='', price=0, count=0):
         self.rs_instance.addShopItem(path, name, price, count)
@@ -1424,6 +1475,7 @@ class SecretShopRefresh:
         pyautogui.mouseDown(button='left')
         time.sleep(0.1)
         pyautogui.moveTo(x, y - win_height * total_scroll)
+        time.sleep(self.SCROLL_DRAG_DELAY)
         pyautogui.mouseUp(button='left')
 
 class AppConfig():

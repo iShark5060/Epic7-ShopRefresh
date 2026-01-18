@@ -12,7 +12,8 @@
     "scrolling": {
         "scroll_ratio": 0.277,
         "scroll_start_x_ratio": 0.58,
-        "scroll_start_y_ratio": 0.65
+        "scroll_start_y_ratio": 0.65,
+        "scroll_drag_delay": 0.15
     },
     "thresholds": {
         "item_match": 0.75,
