@@ -6,7 +6,7 @@ import os
 import sys
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 import argparse
 import pyautogui
@@ -92,7 +92,6 @@ class RefreshStatistic:
         if not os.path.exists(res_folder):
             os.makedirs(res_folder)
 
-        # Cache getName() result to avoid calling it twice
         item_names = self.getName()
         gen_path = 'refreshAttempt' + ''.join(name[:4] for name in item_names) + '.csv'
 
@@ -1795,7 +1794,284 @@ class AutoRefreshGUI:
         self.limit_spend_entry.config(validate='key', validatecommand=(valid_int_reg, '%P'))
 
         self.start_button.pack(fill=tk.X, pady=(0, 0))
+
+        history_icon = '📊'
+        history_button = tk.Button(self.root,
+                                   text=history_icon,
+                                   font=('Segoe UI', 16),
+                                   command=self.showHistorySummary,
+                                   bg=self.bg_secondary,
+                                   fg=self.text_primary,
+                                   activebackground=self.bg_tertiary,
+                                   activeforeground=self.text_primary,
+                                   relief=tk.FLAT,
+                                   bd=0,
+                                   width=3,
+                                   height=1,
+                                   cursor='hand2')
+        history_button.place(relx=1.0, x=-20, y=20, anchor='ne')
+
         self.root.mainloop()
+
+    def _parse_duration(self, duration_str):
+        """Parse duration string (e.g., '1:15:44.076932') or timedelta object to total seconds"""
+        if isinstance(duration_str, timedelta):
+            return duration_str.total_seconds()
+        if isinstance(duration_str, str):
+            try:
+                parts = duration_str.split(':')
+                if len(parts) == 3:
+                    hours = int(parts[0])
+                    minutes = int(parts[1])
+                    seconds_parts = parts[2].split('.')
+                    seconds = int(seconds_parts[0])
+                    microseconds = int(seconds_parts[1]) if len(seconds_parts) > 1 else 0
+                    return hours * 3600 + minutes * 60 + seconds + microseconds / 1000000
+            except (ValueError, IndexError):
+                pass
+        return 0
+
+    def _readAllCSVHistory(self):
+        """Read all CSV files from ShopRefreshHistory folder and aggregate statistics"""
+        res_folder = 'ShopRefreshHistory'
+        if not os.path.exists(res_folder):
+            return None
+
+        total_refreshes = 0
+        total_skystone = 0
+        total_gold = 0
+        total_duration_seconds = 0
+        item_counts = {}
+        item_refreshes = {}
+        csv_files_found = 0
+        standard_columns = {'Time', 'Duration', 'Refresh count', 'Skystone spent', 'Gold spent'}
+
+        for filename in os.listdir(res_folder):
+            if not filename.endswith('.csv') or not filename.startswith('refreshAttempt'):
+                continue
+
+            csv_path = os.path.join(res_folder, filename)
+            csv_files_found += 1
+
+            try:
+                with open(csv_path, 'r', newline='', encoding='utf-8') as file:
+                    reader = csv.DictReader(file)
+                    tracked_items = [col for col in reader.fieldnames if col not in standard_columns] if reader.fieldnames else []
+
+                    for row in reader:
+                        try:
+                            refresh_count = int(row.get('Refresh count', 0))
+                            total_refreshes += refresh_count
+                        except (ValueError, TypeError):
+                            refresh_count = 0
+
+                        try:
+                            total_skystone += int(row.get('Skystone spent', 0))
+                        except (ValueError, TypeError):
+                            pass
+
+                        try:
+                            total_gold += int(row.get('Gold spent', 0))
+                        except (ValueError, TypeError):
+                            pass
+
+                        duration_str = row.get('Duration', '')
+                        total_duration_seconds += self._parse_duration(duration_str)
+
+                        for item_name in tracked_items:
+                            item_refreshes[item_name] = item_refreshes.get(item_name, 0) + refresh_count
+                            try:
+                                count = int(row.get(item_name, 0))
+                                item_counts[item_name] = item_counts.get(item_name, 0) + count
+                            except (ValueError, TypeError):
+                                pass
+            except (IOError, OSError) as e:
+                logger.debug(f'Error reading CSV file {filename} (IO/OS error): {e}', exc_info=True)
+                continue
+            except csv.Error as e:
+                logger.debug(f'Error reading CSV file {filename} (CSV parsing error): {e}', exc_info=True)
+                continue
+            except UnicodeDecodeError as e:
+                logger.debug(f'Error reading CSV file {filename} (encoding error): {e}', exc_info=True)
+                continue
+            except Exception as e:
+                logger.debug(f'Unexpected error reading CSV file {filename}: {e}', exc_info=True)
+                continue
+
+        if csv_files_found == 0:
+            return None
+
+        total_hours = int(total_duration_seconds // 3600)
+        total_minutes = int((total_duration_seconds % 3600) // 60)
+        total_secs = int(total_duration_seconds % 60)
+        formatted_duration = f"{total_hours:02d}:{total_minutes:02d}:{total_secs:02d}"
+
+        item_efficiency = {}
+        for item_name in item_counts:
+            refreshes_for_item = item_refreshes.get(item_name, 0)
+            if refreshes_for_item > 0:
+                item_efficiency[item_name] = (item_counts[item_name] / refreshes_for_item) * 100
+            else:
+                item_efficiency[item_name] = 0
+
+        return {
+            'total_refreshes': total_refreshes,
+            'total_skystone': total_skystone,
+            'total_gold': total_gold,
+            'total_duration': formatted_duration,
+            'item_counts': item_counts,
+            'item_efficiency': item_efficiency,
+            'item_refreshes': item_refreshes,
+            'csv_files_count': csv_files_found
+        }
+
+    def showHistorySummary(self):
+        """Display aggregated summary from all CSV history files"""
+        history_data = self._readAllCSVHistory()
+
+        bg_color = '#1a1a1a'
+        bg_secondary = '#252525'
+        fg_color = '#f5f5f5'
+        fg_secondary = '#a3a3a3'
+
+        item_name_to_image = {}
+        for item in self.app_config.ALL_ITEMS:
+            item_name_to_image[item["name"]] = item["image"]
+
+        summary = tk.Toplevel(self.root)
+        summary.title('Purchase History Summary')
+        summary.geometry('400x900')
+        summary.iconbitmap(get_asset_path(os.path.join('assets', 'icon.ico')))
+        summary.config(bg=bg_color)
+
+        summary._icon_refs = []
+
+        summary.update_idletasks()
+        x = (summary.winfo_screenwidth() // 2) - (summary.winfo_width() // 2)
+        y = (summary.winfo_screenheight() // 2) - (summary.winfo_height() // 2)
+        summary.geometry(f'+{x}+{y}')
+
+        title_frame = tk.Frame(summary, bg=bg_color, pady=20)
+        title_frame.pack(fill=tk.X)
+        tk.Label(title_frame, text='Purchase History Summary', bg=bg_color, fg=fg_color,
+                font=('Segoe UI', 18, 'bold')).pack()
+
+        if history_data is None:
+            no_data_label = tk.Label(summary, text='No history data found.\nStart shopping to generate history!',
+                                    bg=bg_color, fg=fg_secondary, font=('Segoe UI', 12),
+                                    justify=tk.CENTER)
+            no_data_label.pack(pady=50)
+        else:
+            refresh_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
+            refresh_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+            tk.Label(refresh_frame, text='Total Refreshes', bg=bg_secondary, fg=fg_secondary,
+                    font=('Segoe UI', 10)).pack(anchor='w')
+            tk.Label(refresh_frame, text=f"{history_data['total_refreshes']:,}", bg=bg_secondary,
+                    fg='#88FF88', font=('Segoe UI', 24, 'bold')).pack(anchor='w', pady=(5, 0))
+
+            time_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
+            time_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+            tk.Label(time_frame, text='Total Time', bg=bg_secondary, fg=fg_secondary,
+                    font=('Segoe UI', 10)).pack(anchor='w')
+            tk.Label(time_frame, text=history_data['total_duration'], bg=bg_secondary,
+                    fg='#88CCFF', font=('Segoe UI', 24, 'bold')).pack(anchor='w', pady=(5, 0))
+
+            skystone_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
+            skystone_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+            tk.Label(skystone_frame, text='Total Skystone Spent', bg=bg_secondary, fg=fg_secondary,
+                    font=('Segoe UI', 10)).pack(anchor='w')
+            tk.Label(skystone_frame, text=f"{history_data['total_skystone']:,}", bg=bg_secondary,
+                    fg='#FFAA00', font=('Segoe UI', 20, 'bold')).pack(anchor='w', pady=(5, 0))
+
+            gold_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
+            gold_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+            tk.Label(gold_frame, text='Total Gold Spent', bg=bg_secondary, fg=fg_secondary,
+                    font=('Segoe UI', 10)).pack(anchor='w')
+            tk.Label(gold_frame, text=f"{history_data['total_gold']:,}", bg=bg_secondary,
+                    fg='#FF6B6B', font=('Segoe UI', 20, 'bold')).pack(anchor='w', pady=(5, 0))
+
+            if history_data['item_counts']:
+                items_frame = tk.Frame(summary, bg=bg_secondary, padx=20, pady=15)
+                items_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+                tk.Label(items_frame, text='Items Purchased', bg=bg_secondary, fg=fg_secondary,
+                        font=('Segoe UI', 10)).pack(anchor='w')
+
+                items_content = tk.Frame(items_frame, bg=bg_secondary)
+                items_content.pack(fill=tk.X, pady=(10, 0))
+
+                item_icons = {}
+                for item_name, count in history_data['item_counts'].items():
+                    if count > 0 and item_name in item_name_to_image:
+                        image_path = item_name_to_image[item_name]
+                        try:
+                            img = Image.open(get_asset_path(os.path.join('assets', image_path)))
+                            img = img.resize((40, 40), Image.Resampling.LANCZOS)
+                            photo_img = ImageTk.PhotoImage(img)
+                            item_icons[item_name] = photo_img
+                            summary._icon_refs.append(photo_img)
+                        except (FileNotFoundError, OSError, Exception) as e:
+                            logger.warning(f"Failed to load image for item '{item_name}' ({image_path}): {e}. Using fallback.")
+                            try:
+                                fallback_path = get_asset_path(os.path.join('assets', 'item_covenant.png'))
+                                img = Image.open(fallback_path)
+                                img = img.resize((40, 40), Image.Resampling.LANCZOS)
+                                photo_img = ImageTk.PhotoImage(img)
+                                item_icons[item_name] = photo_img
+                                summary._icon_refs.append(photo_img)
+                            except Exception as fallback_error:
+                                logger.exception(f"Failed to load fallback image: {fallback_error}. Skipping icon for '{item_name}'.")
+
+                for item_name, count in sorted(history_data['item_counts'].items()):
+                    if count > 0:
+                        item_row = tk.Frame(items_content, bg=bg_secondary)
+                        item_row.pack(fill=tk.X, pady=5)
+
+                        if item_name in item_icons:
+                            icon_label = tk.Label(item_row, image=item_icons[item_name], bg=bg_secondary)
+                            icon_label.pack(side=tk.LEFT, padx=(0, 10))
+
+                        efficiency = history_data['item_efficiency'].get(item_name, 0)
+                        refreshes_for_item = history_data['item_refreshes'].get(item_name, 0)
+
+                        text_frame = tk.Frame(item_row, bg=bg_secondary)
+                        text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0))
+
+                        if refreshes_for_item > 0:
+                            count_label = tk.Label(text_frame, text=f"{count:,}", bg=bg_secondary, fg='#FFBF00',
+                                    font=('Segoe UI', 11, 'bold'), anchor='w')
+                            count_label.pack(side=tk.LEFT)
+
+                            separator_label = tk.Label(text_frame, text=" / ", bg=bg_secondary,
+                                    fg=fg_color, font=('Segoe UI', 11, 'bold'), anchor='w')
+                            separator_label.pack(side=tk.LEFT)
+
+                            pct_label = tk.Label(text_frame, text=f"{efficiency:.2f}%", bg=bg_secondary,
+                                    fg='#10b981', font=('Segoe UI', 11, 'bold'), anchor='w')
+                            pct_label.pack(side=tk.LEFT)
+                        else:
+                            count_label = tk.Label(text_frame, text=f"{count:,}", bg=bg_secondary, fg='#FFBF00',
+                                    font=('Segoe UI', 11, 'bold'), anchor='w')
+                            count_label.pack(side=tk.LEFT)
+
+            files_note = tk.Label(summary,
+                                 text=f"Data from {history_data['csv_files_count']} CSV file(s)",
+                                 bg=bg_color, fg=fg_secondary, font=('Segoe UI', 8))
+            files_note.pack(pady=(10, 0))
+
+        button_frame = tk.Frame(summary, bg=bg_color, pady=20)
+        button_frame.pack(fill=tk.X)
+        close_btn = tk.Button(button_frame, text='Close', command=summary.destroy,
+                             bg='#6366f1', fg='white', font=('Segoe UI', 11, 'bold'),
+                             padx=30, pady=10, relief=tk.FLAT, cursor='hand2')
+        close_btn.pack()
+
+        close_btn.bind('<Enter>', lambda e: close_btn.config(bg='#818cf8'))
+        close_btn.bind('<Leave>', lambda e: close_btn.config(bg='#6366f1'))
+
+        summary.lift()
+        summary.focus_force()
+        summary.attributes('-topmost', True)
+        summary.after(100, lambda: summary.attributes('-topmost', False))
 
     def packItemHorizontal(self, parent_frame, index, path):
         """Pack item with icon that has colored border (green=active, red=inactive) and is clickable"""

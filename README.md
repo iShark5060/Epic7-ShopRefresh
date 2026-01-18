@@ -21,6 +21,7 @@ This project is a fork of the original Epic Seven Secret Shop Refresh tool. Huge
 - **Safety Checks** - Pauses if you navigate away from the shop
 - **Out of Skystone Check** - Stops script if the user is out of skystones
 - **Live Shopping Display** - Real-time overlay showing items purchased, refresh counter, and elapsed time
+- **Purchase History Summary** - View aggregated statistics from all shopping sessions with per-item efficiency rates
 - **Debug Mode** - Detailed output and screenshot saving for troubleshooting
 - **Robust Error Handling** - Clear error messages for invalid input formats
 
@@ -96,6 +97,7 @@ python .\\E7SecretShopRefresh.py --debug --screenshot --size=1920x1080
 | **Covenant/Mystic/Friendship** | Toggle which bookmark types to purchase |
 | **Skystone Budget** | Maximum skystones to spend (leave empty for unlimited) |
 | **Auto Placement** | Automatically position the game window |
+| **History Button** (📊) | Click the button in the top-right corner to view aggregated purchase history statistics |
 
 ## Building an Executable
 
@@ -165,6 +167,20 @@ Purchase history is automatically saved to the `ShopRefreshHistory` folder as CS
 - Items purchased (count for each bookmark type: Covenant, Mystic, Friendship)
 
 CSV files are named `refreshAttempt[Cov][Mys][Frie].csv` based on which items you're tracking. Files are created automatically when you start shopping.
+
+### History Summary
+
+Click the **📊 History** button in the top-right corner of the main window to view aggregated statistics across all your shopping sessions:
+
+- **Total Refreshes** - Sum of all refreshes across all sessions
+- **Total Time** - Combined duration of all shopping sessions
+- **Total Skystone/Gold Spent** - Cumulative spending across all sessions
+- **Items Purchased** - Per-item statistics showing:
+  - Item count with icon
+  - Efficiency percentage (items found per refresh, calculated only from refreshes that searched for that specific item)
+  - Format: `amount / percentage%`
+
+The efficiency percentage is calculated per-item, accounting for the fact that not all refreshes search for all items (e.g., if Friendship bookmarks aren't always tracked, their efficiency is only calculated from refreshes where they were being searched).
 
 ## ToDo
 
