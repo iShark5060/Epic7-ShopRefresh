@@ -1,14 +1,10 @@
 # Epic7 Shopper - Secret Shop Auto Refresh
 
-An automated tool for refreshing the Secret Shop in Epic Seven, with support for any window resolution and built-in anti-detection features.
+Refreshes Epic Seven's Secret Shop until the bookmarks you actually want show up. Image matching scales to any window size. Random delays, click offsets, and scroll variation so it does not look like a metronome.
+
+Fork of [sya1999's Epic Seven Secret Shop Refresh](https://github.com/sya1999/Epic-Seven-Secret-Shop-Refresh). Navigate to the Secret Shop first. ESC stops it.
 
 ![Demo](https://github.com/iShark5060/Epic7-ShopRefresh/blob/main/assets/E7.gif)
-
-## Credits
-
-**Original Project by [sya1999](https://github.com/sya1999/Epic-Seven-Secret-Shop-Refresh)**
-
-This project is a fork of the original Epic Seven Secret Shop Refresh tool. Huge thanks to the original developer for creating the foundation that made this enhanced version possible!
 
 ---
 
@@ -78,36 +74,39 @@ python .\\E7SecretShopRefresh.py --debug --screenshot --size=1920x1080
 
 ### Option Details
 
-| Option | Description |
-|--------|-------------|
-| `--debug` | Enable debug mode with detailed logging output |
-| `--screenshot` | Save debug screenshots of search areas (requires `--debug`) |
-| `--info` | Display available windows and scaling information, then exit |
+| Option                | Description                                                         |
+| --------------------- | ------------------------------------------------------------------- |
+| `--debug`             | Enable debug mode with detailed logging output                      |
+| `--screenshot`        | Save debug screenshots of search areas (requires `--debug`)         |
+| `--info`              | Display available windows and scaling information, then exit        |
 | `--size=WIDTHxHEIGHT` | Specify custom reference size for assets (e.g., `--size=1920x1080`) |
 
 **Note:**
+
 - If an invalid format is provided to `--size`, the program will display a clear error message and exit.
 - The `--screenshot` option works best with `--debug` enabled to see when and where screenshots are saved.
 
 ## GUI Settings
 
-| Setting | Description |
-|---------|-------------|
-| **Window Title** | Select your game window from the dropdown or type the exact window name |
-| **Covenant/Mystic/Friendship** | Toggle which bookmark types to purchase |
-| **Skystone Budget** | Maximum skystones to spend (leave empty for unlimited) |
-| **Auto Placement** | Automatically position the game window |
-| **History Button** (📊) | Click the button in the top-right corner to view aggregated purchase history statistics |
+| Setting                        | Description                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| **Window Title**               | Select your game window from the dropdown or type the exact window name                 |
+| **Covenant/Mystic/Friendship** | Toggle which bookmark types to purchase                                                 |
+| **Skystone Budget**            | Maximum skystones to spend (leave empty for unlimited)                                  |
+| **Auto Placement**             | Automatically position the game window                                                  |
+| **History Button** (📊)        | Click the button in the top-right corner to view aggregated purchase history statistics |
 
 ## Building an Executable
 
 ### Using the spec file (recommended):
+
 ```bash
 pip install pyinstaller
 pyinstaller .\\E7SecretShopRefresh.spec
 ```
 
 ### Or with a simple command:
+
 ```bash
 pyinstaller -F --noconsole -i assets/icon.ico .\\E7SecretShopRefresh.py
 ```
@@ -159,6 +158,7 @@ If the included images don't work for your setup:
 ## Purchase History
 
 Purchase history is automatically saved to the `ShopRefreshHistory` folder as CSV files. Each session records:
+
 - Timestamp
 - Duration
 - Refresh count
@@ -190,6 +190,4 @@ The efficiency percentage is calculated per-item, accounting for the fact that n
 
 See [LICENSE](LICENSE) file.
 
----
-
-*Happy refreshing! May your bookmarks be plentiful!*
+_Happy refreshing! May your bookmarks be plentiful!_
